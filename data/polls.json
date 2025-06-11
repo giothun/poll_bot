@@ -1,0 +1,122 @@
+[
+  {
+    "id": "1382475065647697992",
+    "guild_id": 1382456108203118684,
+    "channel_id": 1382457038088441996,
+    "message_id": 1382475065647697992,
+    "poll_date": "2025-06-12",
+    "options": [
+      {
+        "event_id": "4613061e-6e38-47ed-a474-a240dd1812de",
+        "title": "Lecture: BinSearch",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "4ddbddc7-ce62-4792-898e-b688235b64c2",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "7fa2105f-b889-4b91-b171-f05b1ed6868d",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "8d81bb88-abcf-4603-96d5-d5d2c34960e6",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      }
+    ],
+    "published_at": "2025-06-11T21:42:20.962564",
+    "closed_at": null,
+    "reminded_users": []
+  },
+  {
+    "id": "1382476697210978355",
+    "guild_id": 1382456108203118684,
+    "channel_id": 1382457038088441996,
+    "message_id": 1382476697210978355,
+    "poll_date": "2025-06-12",
+    "options": [
+      {
+        "event_id": "4613061e-6e38-47ed-a474-a240dd1812de",
+        "title": "Lecture: BinSearch",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "4ddbddc7-ce62-4792-898e-b688235b64c2",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "7fa2105f-b889-4b91-b171-f05b1ed6868d",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "8d81bb88-abcf-4603-96d5-d5d2c34960e6",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "b07d9ff8-bcd1-4b3c-b2c5-b4c999de9dd2",
+        "title": "Lecture: S",
+        "event_type": "lecture",
+        "votes": []
+      }
+    ],
+    "published_at": "2025-06-11T21:48:49.933323",
+    "closed_at": null,
+    "reminded_users": []
+  },
+  {
+    "id": "1382479264527679598",
+    "guild_id": 1382456108203118684,
+    "channel_id": 1382457038088441996,
+    "message_id": 1382479264527679598,
+    "poll_date": "2025-06-12",
+    "options": [
+      {
+        "event_id": "4613061e-6e38-47ed-a474-a240dd1812de",
+        "title": "Lecture: BinSearch",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "4ddbddc7-ce62-4792-898e-b688235b64c2",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "7fa2105f-b889-4b91-b171-f05b1ed6868d",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "8d81bb88-abcf-4603-96d5-d5d2c34960e6",
+        "title": "Lecture: Binary Search",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "b07d9ff8-bcd1-4b3c-b2c5-b4c999de9dd2",
+        "title": "Lecture: S",
+        "event_type": "lecture",
+        "votes": []
+      }
+    ],
+    "published_at": "2025-06-11T21:59:02.031116",
+    "closed_at": null,
+    "reminded_users": []
+  }
+]

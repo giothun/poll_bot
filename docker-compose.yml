@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  campoll:
+    build: .
+    container_name: campoll_bot
+    restart: unless-stopped
+    
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - TIMEZONE=${TIMEZONE:-Europe/Helsinki}
+      - POLL_PUBLISH_TIME=${POLL_PUBLISH_TIME:-15:00}
+      - POLL_CLOSE_TIME=${POLL_CLOSE_TIME:-09:00}
+      - REMINDER_TIME=${REMINDER_TIME:-19:00}
+      
+    volumes:
+      # Persist data across container restarts
+      - ./data:/app/data
+      
+    # Optional: expose logs to host
+    # ports:
+    #   - "8080:8080"  # If you add a health check endpoint
+    
+    # Resource limits for small VPS
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Optional: add a backup service for data
+# services:
+#   backup:
+#     image: alpine:latest
+#     container_name: campoll_backup
+#     volumes:
+#       - ./data:/data:ro
+#       - ./backups:/backups
+#     command: >
+#       sh -c "
+#         while true; do
+#           tar -czf /backups/data_backup_$(date +%Y%m%d_%H%M%S).tar.gz -C /data .
+#           find /backups -name '*.tar.gz' -type f -mtime +7 -delete
+#           sleep 86400
+#         done
+#       "
+#     restart: unless-stopped 

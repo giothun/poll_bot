@@ -1,0 +1,44 @@
+[
+  {
+    "id": "4613061e-6e38-47ed-a474-a240dd1812de",
+    "title": "BinSearch",
+    "date": "2025-06-12",
+    "event_type": "lecture",
+    "created_at": "2025-06-11T20:42:23.870088"
+  },
+  {
+    "id": "4ddbddc7-ce62-4792-898e-b688235b64c2",
+    "title": "Binary Search",
+    "date": "2025-06-12",
+    "event_type": "lecture",
+    "created_at": "2025-06-11T21:02:39.291377"
+  },
+  {
+    "id": "7fa2105f-b889-4b91-b171-f05b1ed6868d",
+    "title": "Binary Search",
+    "date": "2025-06-12",
+    "event_type": "lecture",
+    "created_at": "2025-06-11T21:07:52.475805"
+  },
+  {
+    "id": "8d81bb88-abcf-4603-96d5-d5d2c34960e6",
+    "title": "Binary Search",
+    "date": "2025-06-12",
+    "event_type": "lecture",
+    "created_at": "2025-06-11T21:22:31.031373"
+  },
+  {
+    "id": "b07d9ff8-bcd1-4b3c-b2c5-b4c999de9dd2",
+    "title": "S",
+    "date": "2025-06-12",
+    "event_type": "lecture",
+    "created_at": "2025-06-11T21:47:20.520105"
+  },
+  {
+    "id": "c737da93-81f6-4c13-9d54-7efa425836fd",
+    "title": "DFS",
+    "date": "2025-06-12",
+    "event_type": "lecture",
+    "created_at": "2025-06-11T22:14:30.382050"
+  }
+]

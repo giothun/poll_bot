@@ -1,0 +1,12 @@
+[
+  {
+    "guild_id": 1382456108203118684,
+    "timezone": "Europe/Moscow",
+    "poll_publish_time": "00:24",
+    "poll_close_time": "00:26",
+    "reminder_time": "00:25",
+    "poll_channel_id": 1382457038088441996,
+    "organiser_channel_id": 1382457093298323496,
+    "alerts_channel_id": 1382457143122333716
+  }
+]
