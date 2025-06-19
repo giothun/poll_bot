@@ -3,10 +3,12 @@ Poll Manager Service for CampPoll bot.
 Handles poll publishing, reminders, and closing operations.
 """
 
+# pylint: disable=import-error
+
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
-import discord
+import discord  # type: ignore
 import logging
 
 from models import Event, EventType, PollMeta, PollOption
@@ -60,8 +62,26 @@ async def publish_attendance_poll(
         
         # Get today's events (only pollable ones)
         events_data = await get_events_by_date(today_date)
-        events = [Event.from_dict(event) for event in events_data if Event.from_dict(event).is_pollable]
+        events = [Event.from_dict(event) for event in events_data]
         
+        # Separate feedback-only events and pollable events
+        feedback_only_events = [e for e in events if e.feedback_only]
+        pollable_events = [e for e in events if e.is_pollable and not e.feedback_only]
+        
+        # Create feedback polls immediately for feedback_only events
+        for fb_event in feedback_only_events:
+            dummy_option = PollOption(
+                event_id=fb_event.id,
+                title=f"{fb_event.event_type.value.title()}: {fb_event.title}",
+                event_type=fb_event.event_type,
+            )
+            await create_feedback_poll(guild, dummy_option, guild_settings)
+        
+        if not pollable_events:
+            logger.info("Only feedback-only events today, no attendance poll needed")
+            return []
+        
+        events = pollable_events
         if not events:
             logger.info(f"No pollable events for {today_date} in guild {guild.id}")
             return []
@@ -175,63 +195,72 @@ async def send_reminders(
         sent_count = 0
         failed_count = 0
         already_reminded_count = 0
-        
+
+        # Build mapping of user -> polls they have not voted in yet
+        member_ids = [member.id for member in members]
+        user_to_polls: Dict[int, List[PollMeta]] = {}
+
         for poll_meta in active_polls:
-            # Get non-voters for this poll
-            member_ids = [member.id for member in members]
             non_voter_ids = poll_meta.get_non_voters(member_ids)
-            
-            # Filter out already reminded users
-            not_reminded = [
-                uid for uid in non_voter_ids 
-                if uid not in poll_meta.reminded_users
-            ]
-            
-            already_reminded_count += len(non_voter_ids) - len(not_reminded)
-            
-            # Send reminders
-            for user_id in not_reminded:
-                try:
-                    user = guild.get_member(user_id)
-                    if not user:
-                        continue
-                    
-                    # Create reminder embed
-                    embed = discord.Embed(
-                        title="📝 Poll Reminder",
-                        description=f"Don't forget to vote for your attendance on **{poll_meta.poll_date}**!",
-                        color=0xffa500
-                    )
-                    
+
+            for uid in non_voter_ids:
+                # Skip if they were already reminded for this poll earlier
+                if uid in poll_meta.reminded_users:
+                    already_reminded_count += 1
+                    continue
+
+                user_to_polls.setdefault(uid, []).append(poll_meta)
+
+        # Now send at most one DM per user
+        for user_id, polls_for_user in user_to_polls.items():
+            try:
+                user = guild.get_member(user_id)
+                if not user:
+                    continue
+
+                # Use first poll for channel reference
+                first_poll = polls_for_user[0]
+                poll_channel = guild.get_channel(first_poll.channel_id)
+
+                embed = discord.Embed(
+                    title="📝 Attendance Poll Reminder",
+                    description="You still have not voted in today's attendance poll. Please cast your vote!",
+                    color=0xffa500
+                )
+
+                if poll_channel:
                     embed.add_field(
-                        name="🗳️ Poll Location",
-                        value=f"#{guild.get_channel(poll_meta.channel_id).name}",
+                        name="🗳️ Poll Channel",
+                        value=f"#{poll_channel.name}",
                         inline=False
                     )
-                    
-                    close_time = guild_settings.get("poll_close_time", "09:00")
-                    embed.add_field(
-                        name="⏰ Deadline",
-                        value=f"Tomorrow at {close_time}",
-                        inline=False
-                    )
-                    
-                    embed.set_footer(text="This is an automated reminder from CampPoll")
-                    
-                    await user.send(embed=embed)
-                    
-                    # Mark as reminded
+
+                close_time = guild_settings.get("poll_close_time", "09:00")
+                embed.add_field(
+                    name="⏰ Deadline",
+                    value=f"Tomorrow at {close_time}",
+                    inline=False
+                )
+
+                embed.set_footer(text="This is an automated reminder from CampPoll")
+
+                await user.send(embed=embed)
+
+                sent_count += 1
+
+                # Mark reminded for all their outstanding polls
+                for poll_meta in polls_for_user:
                     poll_meta.reminded_users.append(user_id)
-                    sent_count += 1
-                    
-                except discord.Forbidden:
-                    logger.warning(f"Cannot send DM to user {user_id} - DMs disabled")
-                    failed_count += 1
-                except Exception as e:
-                    logger.error(f"Failed to send reminder to user {user_id}: {e}")
-                    failed_count += 1
-            
-            # Save updated poll metadata
+
+            except discord.Forbidden:
+                logger.warning(f"Cannot send DM to user {user_id} - DMs disabled")
+                failed_count += 1
+            except Exception as e:
+                logger.error(f"Failed to send reminder to user {user_id}: {e}")
+                failed_count += 1
+
+        # Persist updates to polls
+        for poll_meta in active_polls:
             await save_poll(poll_meta.to_dict())
         
         stats = {
@@ -310,8 +339,8 @@ async def close_poll(
             logger.error(f"Failed to end poll {poll_meta.id}: {e}")
             return False
         
-        # Mark poll as closed
-        poll_meta.closed_at = datetime.utcnow()
+        # Mark poll as closed with aware datetime
+        poll_meta.closed_at = datetime.now(timezone.utc)
         
         # Get organiser channel
         organiser_channel_id = guild_settings.get("organiser_channel_id")
@@ -324,30 +353,13 @@ async def close_poll(
             logger.error(f"Organiser channel {organiser_channel_id} not found")
             return False
         
-        # Create results embed
-        embed = discord.Embed(
-            title=f"📊 Poll Results - {poll_meta.poll_date}",
-            description=f"Attendance poll results",
-            color=0x00ff00
-        )
-        
-        embed.add_field(
-            name="📈 Total Votes",
-            value=str(ended_poll.total_votes),
-            inline=True
-        )
-        
-        embed.add_field(
-            name="📝 Options",
-            value=str(len(ended_poll.answers)),
-            inline=True
-        )
-        
-        # Add voting results
+        # Sort answers by vote_count descending for consistent podium labels
+        sorted_answers = sorted(ended_poll.answers, key=lambda a: a.vote_count, reverse=True)
+
         results_text = ""
-        for i, answer in enumerate(ended_poll.answers):
+        for i, answer in enumerate(sorted_answers):
             percentage = (answer.vote_count / ended_poll.total_votes * 100) if ended_poll.total_votes > 0 else 0
-            emoji = "🥇" if answer.victor else "🥈" if i == 1 else "🥉" if i == 2 else "📝"
+            emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "📝"
             results_text += f"{emoji} {answer.text}: **{answer.vote_count}** votes ({percentage:.1f}%)\n"
             
             # Update vote counts in metadata
@@ -359,32 +371,52 @@ async def close_poll(
                     break
         
         if results_text:
+            embed = discord.Embed(
+                title=f"📊 Poll Results - {poll_meta.poll_date}",
+                description=f"Attendance poll results",
+                color=0x00ff00
+            )
+            
+            embed.add_field(
+                name="📈 Total Votes",
+                value=str(ended_poll.total_votes),
+                inline=True
+            )
+            
+            embed.add_field(
+                name="📝 Options",
+                value=str(len(ended_poll.answers)),
+                inline=True
+            )
+            
             embed.add_field(name="🏆 Results", value=results_text, inline=False)
-        else:
-            embed.add_field(name="🏆 Results", value="No votes received", inline=False)
-        
-        embed.set_footer(text=f"Poll closed at {poll_meta.closed_at.strftime('%Y-%m-%d %H:%M UTC')}")
-        
-        # Send results
-        await organiser_channel.send(embed=embed)
-        
-        # Create and send CSV
-        csv_content = await create_attendance_csv(poll_meta)
-        if csv_content:
-            csv_file = discord.File(
-                csv_content,
-                filename=f"attendance_{poll_meta.poll_date}_{poll_meta.id[:8]}.csv"
-            )
-            await organiser_channel.send(
-                content="📄 Detailed attendance data:",
-                file=csv_file
-            )
-        
-        # Save updated poll
-        await save_poll(poll_meta.to_dict())
-        
-        logger.info(f"Successfully closed poll {poll_meta.id}")
-        return True
+            
+            embed.set_footer(text=f"Poll closed at {poll_meta.closed_at.strftime('%Y-%m-%d %H:%M UTC')}")
+            
+            # Send results
+            await organiser_channel.send(embed=embed)
+            
+            # Create and send CSV
+            csv_content = await create_attendance_csv(poll_meta)
+            if csv_content:
+                csv_file = discord.File(
+                    csv_content,
+                    filename=f"attendance_{poll_meta.poll_date}_{poll_meta.id[:8]}.csv"
+                )
+                await organiser_channel.send(
+                    content="📄 Detailed attendance data:",
+                    file=csv_file
+                )
+            
+            # Save updated poll
+            await save_poll(poll_meta.to_dict())
+            
+            # Publish feedback polls (no reminders required)
+            for option in poll_meta.options:
+                await create_feedback_poll(guild, option, guild_settings)
+
+            logger.info(f"Successfully closed poll {poll_meta.id} and published feedback polls")
+            return True
         
     except Exception as e:
         logger.error(f"Error closing poll {poll_meta.id}: {e}")
@@ -424,3 +456,82 @@ async def close_all_active_polls(
     except Exception as e:
         logger.error(f"Error closing active polls for guild {guild.id}: {e}")
         return 0
+
+FEEDBACK_OPTIONS: Dict[EventType, List[str]] = {
+    EventType.LECTURE: [
+        "😻 It was super useful!",
+        "🆗 I knew smth before, but still enjoyed it!",
+        "😑 It could be better",
+        "🏃‍♀️‍➡️ I was attending another class",
+    ],
+    EventType.CONTEST: [
+        "🩷 Wow, I loved it!",
+        "😿 It was too hard",
+        "🙅‍♂️ I didn't participate",
+    ],
+    EventType.EXTRA_LECTURE: [
+        "🤩 Cool – It was informative and useful",
+        "👍 Okay – It was interesting but not so relevant",
+        "😞 Meh – It could have been better",
+        "🛑 I didn't participate",
+    ],
+    EventType.EVENING_ACTIVITY: [
+        "❤️‍🔥 Cool – I want more like it",
+        "😃 Okay – It was fun",
+        "😕 Meh – I could do something better",
+        "🙈 I didn't participate",
+    ],
+}
+
+# Helper: publish a feedback poll for a single event option (no reminders)
+async def create_feedback_poll(
+    guild: discord.Guild,
+    event_option: PollOption,
+    guild_settings: Dict[str, Any],
+) -> Optional[PollMeta]:
+    """Publish a feedback poll for the given event option.
+
+    Returns the PollMeta if created, otherwise None.
+    """
+    try:
+        poll_channel_id = guild_settings.get("poll_channel_id")
+        poll_channel = guild.get_channel(poll_channel_id) if poll_channel_id else None
+        if not poll_channel:
+            return None
+
+        feedback_texts = FEEDBACK_OPTIONS.get(event_option.event_type)
+        if not feedback_texts:
+            return None
+
+        question = f"📝 Feedback for {event_option.title}"
+
+        poll = discord.Poll(question=question, multiple=False, duration=timedelta(hours=24))
+
+        poll_options_meta: List[PollOption] = []
+        for text in feedback_texts:
+            poll.add_answer(text=text)
+            poll_options_meta.append(
+                PollOption(
+                    event_id=event_option.event_id,
+                    title=text,
+                    event_type=event_option.event_type,
+                )
+            )
+
+        message = await poll_channel.send(poll=poll)
+
+        feedback_meta = PollMeta(
+            id=str(message.id),
+            guild_id=guild.id,
+            channel_id=poll_channel.id,
+            message_id=message.id,
+            poll_date=event_option.event_id,  # Store related event id for reference
+            options=poll_options_meta,
+            is_feedback=True,
+        )
+
+        await save_poll(feedback_meta.to_dict())
+        return feedback_meta
+    except Exception as e:
+        logger.error(f"Failed to create feedback poll for event {event_option.event_id}: {e}")
+        return None

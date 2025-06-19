@@ -40,5 +40,26 @@
     "date": "2025-06-12",
     "event_type": "lecture",
     "created_at": "2025-06-11T22:14:30.382050"
+  },
+  {
+    "id": "fe01062d-6a8c-40ba-abe3-192e1ecd4d1b",
+    "title": "Segment Tree",
+    "date": "2025-06-19",
+    "event_type": "lecture",
+    "created_at": "2025-06-19T08:12:55.511454"
+  },
+  {
+    "id": "1cf3d966-da98-4bce-9f47-959f18d9d93f",
+    "title": "DFS",
+    "date": "2025-06-19",
+    "event_type": "lecture",
+    "created_at": "2025-06-19T08:04:24.272073"
+  },
+  {
+    "id": "14ac2f49-1be3-4719-83b3-aebb68beb866",
+    "title": "BFS",
+    "date": "2025-06-19",
+    "event_type": "lecture",
+    "created_at": "2025-06-19T08:07:52.874216"
   }
 ]

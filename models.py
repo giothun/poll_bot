@@ -4,7 +4,7 @@ Defines the core entities: Event, EventType, PollMeta, etc.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Dict, Optional
 
@@ -22,12 +22,17 @@ class Event:
     title: str
     date: str  # YYYY-MM-DD format
     event_type: EventType
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    feedback_only: bool = False  # if True, attendance poll is skipped and only feedback is posted
     
     def __post_init__(self):
         """Convert string event_type to EventType enum if needed."""
         if isinstance(self.event_type, str):
-            self.event_type = EventType(self.event_type)
+            try:
+                self.event_type = EventType(self.event_type)
+            except ValueError:
+                # Fallback to a non-pollable type to avoid crashes on bad input
+                self.event_type = EventType.EXTRA_LECTURE
     
     @property
     def is_pollable(self) -> bool:
@@ -41,7 +46,8 @@ class Event:
             "title": self.title,
             "date": self.date,
             "event_type": self.event_type.value,
-            "created_at": self.created_at.isoformat()
+            "created_at": self.created_at.isoformat(),
+            "feedback_only": self.feedback_only
         }
     
     @classmethod
@@ -52,7 +58,8 @@ class Event:
             title=data["title"],
             date=data["date"],
             event_type=EventType(data["event_type"]),
-            created_at=datetime.fromisoformat(data["created_at"])
+            created_at=datetime.fromisoformat(data["created_at"]),
+            feedback_only=data.get("feedback_only", False)
         )
 
 @dataclass
@@ -91,9 +98,10 @@ class PollMeta:
     message_id: int
     poll_date: str  # Date the poll is for (YYYY-MM-DD)
     options: List[PollOption] = field(default_factory=list)
-    published_at: datetime = field(default_factory=datetime.utcnow)
+    published_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     closed_at: Optional[datetime] = None
     reminded_users: List[int] = field(default_factory=list)  # Users who got reminders
+    is_feedback: bool = False  # True for feedback polls that don't need reminders
     
     @property
     def is_closed(self) -> bool:
@@ -153,7 +161,8 @@ class PollMeta:
             ],
             "published_at": self.published_at.isoformat(),
             "closed_at": self.closed_at.isoformat() if self.closed_at else None,
-            "reminded_users": self.reminded_users
+            "reminded_users": self.reminded_users,
+            "is_feedback": self.is_feedback
         }
     
     @classmethod
@@ -178,7 +187,8 @@ class PollMeta:
             options=options,
             published_at=datetime.fromisoformat(data["published_at"]),
             closed_at=datetime.fromisoformat(data["closed_at"]) if data["closed_at"] else None,
-            reminded_users=data["reminded_users"]
+            reminded_users=data.get("reminded_users", []),
+            is_feedback=data.get("is_feedback", False)
         )
 
 @dataclass

@@ -247,41 +247,46 @@ class AdminCommands(commands.Cog):
     
     @app_commands.command(name="addlecture", description="Add a new lecture")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Search Algorithms)"
+        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Search Algorithms)",
+        feedback_only="Skip attendance poll and publish only feedback"
     )
-    async def add_lecture(self, interaction: discord.Interaction, date_title: str):
+    async def add_lecture(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
         """Add a new lecture event."""
-        await self._add_event_from_string(interaction, date_title, EventType.LECTURE)
+        await self._add_event_from_string(interaction, date_title, EventType.LECTURE, feedback_only)
     
     @app_commands.command(name="addcontest", description="Add a new contest")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Graph Challenge)"
+        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Graph Challenge)",
+        feedback_only="Skip attendance poll and publish only feedback"
     )
-    async def add_contest(self, interaction: discord.Interaction, date_title: str):
+    async def add_contest(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
         """Add a new contest event."""
-        await self._add_event_from_string(interaction, date_title, EventType.CONTEST)
+        await self._add_event_from_string(interaction, date_title, EventType.CONTEST, feedback_only)
     
     @app_commands.command(name="addextralecture", description="Add an extra lecture (not included in polls)")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;DevOps 101)"
+        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;DevOps 101)",
+        feedback_only="Skip attendance poll and publish only feedback"
     )
-    async def add_extra_lecture(self, interaction: discord.Interaction, date_title: str):
+    async def add_extra_lecture(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
         """Add an extra lecture event (not polled)."""
-        await self._add_event_from_string(interaction, date_title, EventType.EXTRA_LECTURE)
+        await self._add_event_from_string(interaction, date_title, EventType.EXTRA_LECTURE, feedback_only)
     
     @app_commands.command(name="addeveningactivity", description="Add an evening activity (not included in polls)")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Movie Night)"
+        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Movie Night)",
+        feedback_only="Skip attendance poll and publish only feedback"
     )
-    async def add_evening_activity(self, interaction: discord.Interaction, date_title: str):
+    async def add_evening_activity(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
         """Add an evening activity event (not polled)."""
-        await self._add_event_from_string(interaction, date_title, EventType.EVENING_ACTIVITY)
+        await self._add_event_from_string(interaction, date_title, EventType.EVENING_ACTIVITY, feedback_only)
     
     async def _add_event_from_string(
         self,
         interaction: discord.Interaction,
         date_title: str,
-        event_type: EventType
+        event_type: EventType,
+        feedback_only: bool = False,
     ):
         """Parse date;title string and add event."""
         try:
@@ -296,7 +301,20 @@ class AdminCommands(commands.Cog):
                 return
             
             date, title = date_title.split(";", 1)
-            await self._add_event(interaction, date.strip(), title.strip(), event_type)
+            
+            # Prevent duplicate events (same date, title, and type)
+            existing_events = await get_events_by_date(date)
+            if any(
+                e.get("event_type") == event_type.value and e.get("title", "").strip().lower() == title.strip().lower()
+                for e in existing_events
+            ):
+                await interaction.followup.send(
+                    f"❌ {event_type.value.title()} '{title}' on {date} already exists.",
+                    ephemeral=True
+                )
+                return
+            
+            await self._add_event(interaction, date.strip(), title.strip(), event_type, feedback_only)
             
         except Exception as e:
             logger.error(f"Error parsing event string: {e}")
@@ -313,7 +331,8 @@ class AdminCommands(commands.Cog):
         interaction: discord.Interaction,
         date: str,
         title: str,
-        event_type: EventType
+        event_type: EventType,
+        feedback_only: bool = False,
     ):
         """Add a new event."""
         try:
@@ -328,13 +347,26 @@ class AdminCommands(commands.Cog):
                 )
                 return
             
+            # Prevent duplicate events (same date, title, and type)
+            existing_events = await get_events_by_date(date)
+            if any(
+                e.get("event_type") == event_type.value and e.get("title", "").strip().lower() == title.strip().lower()
+                for e in existing_events
+            ):
+                await interaction.followup.send(
+                    f"❌ {event_type.value.title()} '{title}' on {date} already exists.",
+                    ephemeral=True
+                )
+                return
+            
             # Create event
             event = Event(
                 id=str(uuid.uuid4()),
                 title=title,
                 date=date,
                 event_type=event_type,
-                created_at=datetime.utcnow()
+                created_at=datetime.utcnow(),
+                feedback_only=feedback_only,
             )
             
             # Save event
@@ -347,6 +379,8 @@ class AdminCommands(commands.Cog):
             embed.add_field(name="📅 Date", value=date, inline=True)
             embed.add_field(name="📝 Title", value=title, inline=True)
             embed.add_field(name="🏷️ Type", value=event_type.value.replace("_", " ").title(), inline=True)
+            if feedback_only:
+                embed.add_field(name="⚙️ Mode", value="Feedback only", inline=False)
             embed.set_footer(text=f"Event ID: {event.id}")
             
             await interaction.followup.send(embed=embed, ephemeral=True)

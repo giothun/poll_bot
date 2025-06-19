@@ -3,6 +3,8 @@ CSV Service for CampPoll bot.
 Handles creation and export of attendance data in CSV format.
 """
 
+# pylint: disable=import-error
+
 import pandas as pd
 from typing import Optional
 from io import StringIO, BytesIO
@@ -27,9 +29,14 @@ async def create_attendance_csv(poll_meta: PollMeta, guild_members=None) -> Opti
         # Prepare data for CSV in simple format: user_id,username,choice
         csv_data = []
         
-        # Get all unique voters
+        # Collect first choice per user to avoid duplicates
+        seen_users: set[int] = set()
         for option in poll_meta.options:
             for user_id in option.votes:
+                if user_id in seen_users:
+                    continue
+                seen_users.add(user_id)
+
                 username = "Unknown"
                 if guild_members and user_id in guild_members:
                     username = guild_members[user_id]

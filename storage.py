@@ -8,6 +8,7 @@ import os
 import asyncio
 from typing import Any, Dict, List, Optional
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 from config import get_config
 
@@ -74,10 +75,16 @@ async def save(filename: str, data: Any) -> bool:
         try:
             # Convert data to JSON string
             json_str = json.dumps(data, indent=2, ensure_ascii=False, default=str)
-            
-            # Write file asynchronously
+
+            # Write atomically: write to a temp file then move in place
+            tmp_path = file_path.with_suffix(".tmp")
+
+            def _atomic_write():
+                tmp_path.write_text(json_str, encoding="utf-8")
+                os.replace(tmp_path, file_path)
+
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, file_path.write_text, json_str, 'utf-8')
+            await loop.run_in_executor(None, _atomic_write)
             return True
             
         except (TypeError, OSError) as e:
@@ -217,17 +224,18 @@ async def get_file_size(filename: str) -> int:
 
 async def cleanup_old_polls(days_old: int = 30) -> int:
     """Remove polls older than specified days. Returns number of removed polls."""
-    from datetime import datetime, timedelta
-    
-    cutoff_date = datetime.utcnow() - timedelta(days=days_old)
     polls = await load_polls()
     
     original_count = len(polls)
     cleaned_polls = {}
     
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
+    
     for poll_id, poll in polls.items():
         try:
             published_at = datetime.fromisoformat(poll["published_at"])
+            if published_at.tzinfo is None:
+                published_at = published_at.replace(tzinfo=timezone.utc)
             if published_at >= cutoff_date:
                 cleaned_polls[poll_id] = poll
         except (KeyError, ValueError):

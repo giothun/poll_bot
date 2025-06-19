@@ -33,7 +33,9 @@
     ],
     "published_at": "2025-06-11T21:42:20.962564",
     "closed_at": null,
-    "reminded_users": []
+    "reminded_users": [
+      242734993493721088
+    ]
   },
   {
     "id": "1382476697210978355",
@@ -75,7 +77,9 @@
     ],
     "published_at": "2025-06-11T21:48:49.933323",
     "closed_at": null,
-    "reminded_users": []
+    "reminded_users": [
+      242734993493721088
+    ]
   },
   {
     "id": "1382479264527679598",
@@ -117,6 +121,78 @@
     ],
     "published_at": "2025-06-11T21:59:02.031116",
     "closed_at": null,
+    "reminded_users": [
+      242734993493721088
+    ]
+  },
+  {
+    "id": "1385168478591389746",
+    "guild_id": 1382456108203118684,
+    "channel_id": 1382457038088441996,
+    "message_id": 1385168478591389746,
+    "poll_date": "2025-06-19",
+    "options": [
+      {
+        "event_id": "fe01062d-6a8c-40ba-abe3-192e1ecd4d1b",
+        "title": "Lecture: DFS",
+        "event_type": "lecture",
+        "votes": [
+          242734993493721088
+        ]
+      },
+      {
+        "event_id": "1cf3d966-da98-4bce-9f47-959f18d9d93f",
+        "title": "Lecture: DFS",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "6341f68c-2450-4304-94f1-b930463f71d2",
+        "title": "Lecture: DFS",
+        "event_type": "lecture",
+        "votes": []
+      }
+    ],
+    "published_at": "2025-06-19T08:05:00.554414+00:00",
+    "closed_at": "2025-06-19T08:07:02.555946+00:00",
     "reminded_users": []
+  },
+  {
+    "id": "1385169485241258035",
+    "guild_id": 1382456108203118684,
+    "channel_id": 1382457038088441996,
+    "message_id": 1385169485241258035,
+    "poll_date": "2025-06-19",
+    "options": [
+      {
+        "event_id": "fe01062d-6a8c-40ba-abe3-192e1ecd4d1b",
+        "title": "Lecture: DFS",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "1cf3d966-da98-4bce-9f47-959f18d9d93f",
+        "title": "Lecture: DFS",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "6341f68c-2450-4304-94f1-b930463f71d2",
+        "title": "Lecture: DFS",
+        "event_type": "lecture",
+        "votes": []
+      },
+      {
+        "event_id": "14ac2f49-1be3-4719-83b3-aebb68beb866",
+        "title": "Lecture: BFS",
+        "event_type": "lecture",
+        "votes": []
+      }
+    ],
+    "published_at": "2025-06-19T08:09:00.457549+00:00",
+    "closed_at": "2025-06-19T08:11:02.489005+00:00",
+    "reminded_users": [
+      242734993493721088
+    ]
   }
 ]

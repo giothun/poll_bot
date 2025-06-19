@@ -4,13 +4,16 @@ A Discord bot for automated daily attendance polls in educational camp environme
 
 ## ✨ Features
 
-- **Daily Automated Polls**: Creates single attendance poll at 15:00 for tomorrow's events
-- **Smart Reminders**: One DM reminder at 19:00 to users who haven't voted
-- **Auto-Close & Results**: Closes at 09:00 next day with summary + CSV in #organisers
+- **Daily Attendance Polls**: Publishes tomorrow-attendance poll at 15:00
+- **Automatic Feedback Polls**: When attendance poll closes, bot posts separate feedback polls with emoji-options per event
+- **Feedback-Only Mode**: Mark an event as `feedback_only` to skip attendance poll entirely and publish only feedback
+- **Smart Reminders**: Single DM at 19:00 to users who haven't voted (feedback polls are excluded)
+- **Auto-Close & CSV Export**: Poll closes 09:00 next day – summary + CSV in #organisers
+- **Duplicate Guard**: Same *date ‑ title ‑ type* can't be added twice – bot replies "already exists"
 - **Multi-Event Types**: Lectures, Contests, Extra Lectures, Evening Activities
 - **Poll Splitting**: Automatically splits if >10 options (max 10 per poll)
-- **Timezone Support**: Full IANA timezone support for international camps
-- **Simple Storage**: Flat JSON files (events.json, polls.json) with ≤5KB footprint
+- **Timezone Support**: IANA timezones per guild
+- **Lightweight Storage**: Flat JSON files, ≤5 KB total
 - **English Only**: All UI and documentation in English
 
 ## 🚀 Quick Start
@@ -94,15 +97,14 @@ All commands require Administrator permissions.
 
 Format: `YYYY-MM-DD;Title` for all event commands
 
-**Add Events**:
-- `/addLecture <date;title>` - Add lecture (included in polls)
-  - Example: `/addLecture 2025-06-12;Search Algorithms`
-- `/addContest <date;title>` - Add contest (included in polls)
-  - Example: `/addContest 2025-06-12;Graph Challenge`
-- `/addExtraLecture <date;title>` - Add extra lecture (not polled)
-  - Example: `/addExtraLecture 2025-06-12;DevOps 101`
-- `/addEveningActivity <date;title>` - Add evening activity (not polled)
-  - Example: `/addEveningActivity 2025-06-12;Movie Night`
+**Add Events** (optional `feedback_only:true/false` flag):
+- `/addLecture <date;title> [feedback_only:true]` – Lecture. Example:
+  `/addLecture 2025-06-12;Search Algorithms feedback_only:false`
+- `/addContest <date;title> [feedback_only:true]` – Contest.
+- `/addExtraLecture <date;title> [feedback_only:true]` – Extra lecture (not in attendance poll unless feedback_only=false).
+- `/addEveningActivity <date;title> [feedback_only:true]` – Evening activity.
+
+If `feedback_only:true` the bot *skips* attendance poll for that event day and immediately publishes the feedback-poll with preset emoji options.
 
 **Edit Events**:
 - `/editLecture <event_id> <date;title>`
@@ -131,7 +133,7 @@ Format: `YYYY-MM-DD;Title` for all event commands
 
 | Time | Action | Description |
 |------|--------|-------------|
-| **15:00** | 📢 **Publish** | Single poll for tomorrow's Lectures & Contests (max 10 options) |
+| **15:00** | 📢 **Publish** | Attendance poll for tomorrow's *non-feedback* Lectures & Contests |
 | **19:00** | 📧 **Remind** | One DM to students who haven't voted |
 | **09:00** next day | 📊 **Close** | Close poll; post summary & CSV in #organisers |
 
@@ -144,15 +146,12 @@ Format: `YYYY-MM-DD;Title` for all event commands
 🇨 Discrete Math
 ```
 
-Students can choose **one** option. If >10 events, the bot creates additional polls automatically.
+Students choose **one** option. If >10 events, bot splits into multiple polls.  
+For feedback-only days the attendance poll step is skipped – only feedback polls appear.
 
 ## 📧 Reminder DM (19:00)
 
-```
-Reminder: please choose which lectures/contests you plan to attend tomorrow. The poll closes at 09:00.
-```
-
-If a DM fails (user disabled messages), a warning is posted in #bot-alerts.
+Bot sends *one* DM per student covering any still-open attendance polls. Feedback polls are ignored to avoid spam.
 
 ## 📁 Data Storage
 

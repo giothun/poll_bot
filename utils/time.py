@@ -3,7 +3,7 @@ Time utilities for CampPoll bot.
 Provides timezone-aware date/time operations.
 """
 
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, Tuple
 
@@ -72,8 +72,13 @@ def create_scheduled_time(date_str: str, time_str: str, timezone: str) -> Option
         
         # Combine and localize
         tz = ZoneInfo(timezone)
-        dt = datetime.combine(date_obj, time_obj)
-        return dt.replace(tzinfo=tz)
+        # Python 3.11+ supports tzinfo param for combine; fallback otherwise
+        try:
+            dt = datetime.combine(date_obj, time_obj, tzinfo=tz)  # type: ignore[arg-type]
+        except TypeError:
+            # Older interpreter – set tzinfo after combine (may shift wall time during DST transitions)
+            dt = datetime.combine(date_obj, time_obj).replace(tzinfo=tz)
+        return dt
         
     except (ValueError, Exception):
         return None
@@ -140,7 +145,7 @@ def get_time_until(target: datetime) -> str:
     Returns:
         Human-readable time difference (e.g., "2 hours 30 minutes")
     """
-    now = datetime.now(target.tzinfo) if target.tzinfo else datetime.utcnow()
+    now = datetime.now(target.tzinfo or timezone.utc)
     diff = target - now
     
     if diff.total_seconds() < 0:
