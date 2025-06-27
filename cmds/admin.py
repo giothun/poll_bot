@@ -27,6 +27,18 @@ class AdminCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
+    # Ensure that all application (slash) commands in this cog are restricted to server administrators
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Global check for every app command in this cog."""
+        if interaction.user and interaction.user.guild_permissions.administrator:
+            return True
+
+        await interaction.response.send_message(
+            "❌ Only server administrators can use this command.",
+            ephemeral=True,
+        )
+        return False
+    
     async def cog_check(self, ctx) -> bool:
         """Ensure only administrators can use these commands."""
         return ctx.author.guild_permissions.administrator
