@@ -85,6 +85,9 @@ class CampPollBot(commands.Bot):
         # Setup scheduler
         await self.setup_scheduler()
         
+        # Setup error handler for app commands
+        self.tree.on_error = self.on_app_command_error
+        
         # Sync slash commands
         try:
             synced = await self.tree.sync()
@@ -379,6 +382,39 @@ class CampPollBot(commands.Bot):
     async def on_error(self, event, *args, **kwargs):
         """Global error handler."""
         logger.error(f"Error in event {event}", exc_info=True)
+    
+    async def on_app_command_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+        """Handle app command errors."""
+        if isinstance(error, discord.app_commands.CheckFailure):
+            logger.warning(f"Permission check failed for user {interaction.user.name} ({interaction.user.id}) on command {interaction.command.name}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "❌ You don't have permission to use this command. Only server administrators or users with the 'Organisers' role can use bot commands.",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send(
+                        "❌ You don't have permission to use this command. Only server administrators or users with the 'Organisers' role can use bot commands.",
+                        ephemeral=True
+                    )
+            except Exception as e:
+                logger.error(f"Failed to send permission error message: {e}")
+        else:
+            logger.error(f"App command error in {interaction.command.name}: {error}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "❌ An error occurred while processing the command.",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send(
+                        "❌ An error occurred while processing the command.",
+                        ephemeral=True
+                    )
+            except Exception as e:
+                logger.error(f"Failed to send error message: {e}")
     
     async def close(self):
         """Cleanup when bot shuts down."""

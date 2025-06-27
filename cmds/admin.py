@@ -30,21 +30,38 @@ class AdminCommands(commands.Cog):
     # Ensure that all application (slash) commands in this cog are restricted to server administrators or Organisers role
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Global check for every app command in this cog."""
-        if interaction.user and interaction.user.guild_permissions.administrator:
+        user = interaction.user
+        
+        # Log user roles for debugging
+        user_roles = [f"{r.name} (ID: {r.id})" for r in user.roles]
+        logger.info(f"User {user.name} ({user.id}) roles: {user_roles}")
+        
+        # Check administrator permissions
+        if user and user.guild_permissions.administrator:
+            logger.info(f"User {user.name} has administrator permissions")
             return True
         
         # Check for Organisers role (by name or ID)
         organiser_role = next(
-            (r for r in interaction.user.roles 
+            (r for r in user.roles 
              if r.name.lower() == "organisers" or r.id == 1367172527012712622), None
         )
         if organiser_role:
+            logger.info(f"User {user.name} has Organisers role: {organiser_role.name} (ID: {organiser_role.id})")
             return True
 
-        await interaction.response.send_message(
-            "❌ Only server administrators or users with the 'Organisers' role can use this command.",
-            ephemeral=True,
-        )
+        logger.warning(f"User {user.name} ({user.id}) denied access - no admin permissions or Organisers role")
+        
+        # Send error message if no permission
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ Only server administrators or users with the 'Organisers' role can use this command.",
+                    ephemeral=True,
+                )
+        except Exception as e:
+            logger.error(f"Failed to send permission error message: {e}")
+        
         return False
     
     async def cog_check(self, ctx) -> bool:
