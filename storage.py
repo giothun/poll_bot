@@ -14,12 +14,14 @@ from config import get_config
 
 # Global lock for file operations to prevent race conditions
 _file_locks: Dict[str, asyncio.Lock] = {}
+_locks_lock = asyncio.Lock()
 
-def _get_file_lock(filename: str) -> asyncio.Lock:
+async def _get_file_lock(filename: str) -> asyncio.Lock:
     """Get or create a lock for a specific file."""
-    if filename not in _file_locks:
-        _file_locks[filename] = asyncio.Lock()
-    return _file_locks[filename]
+    async with _locks_lock:
+        if filename not in _file_locks:
+            _file_locks[filename] = asyncio.Lock()
+        return _file_locks[filename]
 
 async def load(filename: str, default: Any = None) -> Any:
     """
@@ -39,7 +41,8 @@ async def load(filename: str, default: Any = None) -> Any:
     file_path.parent.mkdir(exist_ok=True)
     
     # Use file-specific lock
-    async with _get_file_lock(filename):
+    file_lock = await _get_file_lock(filename)
+    async with file_lock:
         try:
             if not file_path.exists():
                 return default
@@ -71,7 +74,8 @@ async def save(filename: str, data: Any) -> bool:
     file_path.parent.mkdir(exist_ok=True)
     
     # Use file-specific lock
-    async with _get_file_lock(filename):
+    file_lock = await _get_file_lock(filename)
+    async with file_lock:
         try:
             # Convert data to JSON string
             json_str = json.dumps(data, indent=2, ensure_ascii=False, default=str)

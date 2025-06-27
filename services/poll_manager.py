@@ -181,8 +181,10 @@ async def send_reminders(
             logger.info(f"No active polls for guild {guild.id}")
             return {"sent": 0, "failed": 0, "already_reminded": 0}
         
-        # Get student role
-        student_role = discord.utils.get(guild.roles, name="student")
+        # Get student role (case-insensitive search)
+        student_role = next(
+            (r for r in guild.roles if r.name.lower() == "student"), None
+        )
         if not student_role:
             logger.warning(f"Student role not found in guild {guild.id}")
             return {"sent": 0, "failed": 0, "already_reminded": 0}

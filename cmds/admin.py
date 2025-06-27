@@ -312,6 +312,13 @@ class AdminCommands(commands.Cog):
                 )
                 return
             
+            if ";" not in date_title:
+                await interaction.followup.send(
+                    "❌ Invalid format. Use: YYYY-MM-DD;Title\n"
+                    "Example: `2025-06-12;Search Algorithms`",
+                    ephemeral=True
+                )
+                return
             date, title = date_title.split(";", 1)
             
             # Prevent duplicate events (same date, title, and type)
