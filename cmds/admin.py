@@ -33,9 +33,10 @@ class AdminCommands(commands.Cog):
         if interaction.user and interaction.user.guild_permissions.administrator:
             return True
         
-        # Check for Organisers role (case-insensitive)
+        # Check for Organisers role (by name or ID)
         organiser_role = next(
-            (r for r in interaction.user.roles if r.name.lower() == "organisers"), None
+            (r for r in interaction.user.roles 
+             if r.name.lower() == "organisers" or r.id == 1367172527012712622), None
         )
         if organiser_role:
             return True
@@ -51,9 +52,10 @@ class AdminCommands(commands.Cog):
         if ctx.author.guild_permissions.administrator:
             return True
         
-        # Check for Organisers role (case-insensitive)
+        # Check for Organisers role (by name or ID)
         organiser_role = next(
-            (r for r in ctx.author.roles if r.name.lower() == "organisers"), None
+            (r for r in ctx.author.roles 
+             if r.name.lower() == "organisers" or r.id == 1367172527012712622), None
         )
         return organiser_role is not None
     
