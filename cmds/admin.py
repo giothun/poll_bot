@@ -27,21 +27,35 @@ class AdminCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    # Ensure that all application (slash) commands in this cog are restricted to server administrators
+    # Ensure that all application (slash) commands in this cog are restricted to server administrators or Organisers role
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Global check for every app command in this cog."""
         if interaction.user and interaction.user.guild_permissions.administrator:
             return True
+        
+        # Check for Organisers role (case-insensitive)
+        organiser_role = next(
+            (r for r in interaction.user.roles if r.name.lower() == "organisers"), None
+        )
+        if organiser_role:
+            return True
 
         await interaction.response.send_message(
-            "❌ Only server administrators can use this command.",
+            "❌ Only server administrators or users with the 'Organisers' role can use this command.",
             ephemeral=True,
         )
         return False
     
     async def cog_check(self, ctx) -> bool:
-        """Ensure only administrators can use these commands."""
-        return ctx.author.guild_permissions.administrator
+        """Ensure only administrators or Organisers can use these commands."""
+        if ctx.author.guild_permissions.administrator:
+            return True
+        
+        # Check for Organisers role (case-insensitive)
+        organiser_role = next(
+            (r for r in ctx.author.roles if r.name.lower() == "organisers"), None
+        )
+        return organiser_role is not None
     
     @app_commands.command(name="setchannels", description="Set up bot channels")
     @app_commands.describe(
