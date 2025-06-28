@@ -9,9 +9,10 @@ services:
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - TIMEZONE=${TIMEZONE:-Europe/Helsinki}
-      - POLL_PUBLISH_TIME=${POLL_PUBLISH_TIME:-15:00}
+      - POLL_PUBLISH_TIME=${POLL_PUBLISH_TIME:-14:30}
       - POLL_CLOSE_TIME=${POLL_CLOSE_TIME:-09:00}
       - REMINDER_TIME=${REMINDER_TIME:-19:00}
+      - FEEDBACK_PUBLISH_TIME=${FEEDBACK_PUBLISH_TIME:-22:00}
       
     volumes:
       # Persist data across container restarts

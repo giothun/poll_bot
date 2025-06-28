@@ -43,7 +43,7 @@ async def publish_attendance_poll(
     guild_settings: Dict[str, Any]
 ) -> List[PollMeta]:
     """
-    Publish daily attendance poll(s) for today's events.
+    Publish daily attendance poll(s) for tomorrow's events.
     
     Args:
         bot: Discord bot instance
@@ -56,12 +56,12 @@ async def publish_attendance_poll(
     try:
         logger.info(f"Publishing attendance poll for guild {guild.id}")
         
-        # Get today's date in guild timezone
+        # Get tomorrow's date in guild timezone
         timezone = guild_settings.get("timezone", "Europe/Helsinki")
-        today_date = tz_today(timezone)
+        tomorrow_date = tz_tomorrow(timezone)
         
-        # Get today's events (only pollable ones)
-        events_data = await get_events_by_date(today_date)
+        # Get tomorrow's events (only pollable ones)
+        events_data = await get_events_by_date(tomorrow_date)
         events = [Event.from_dict(event) for event in events_data]
         
         # Separate feedback-only events and pollable events
@@ -78,12 +78,12 @@ async def publish_attendance_poll(
             await create_feedback_poll(guild, dummy_option, guild_settings)
         
         if not pollable_events:
-            logger.info("Only feedback-only events today, no attendance poll needed")
+            logger.info("Only feedback-only events tomorrow, no attendance poll needed")
             return []
         
         events = pollable_events
         if not events:
-            logger.info(f"No pollable events for {today_date} in guild {guild.id}")
+            logger.info(f"No pollable events for {tomorrow_date} in guild {guild.id}")
             return []
         
         # Get poll channel
@@ -103,7 +103,7 @@ async def publish_attendance_poll(
         
         for chunk_index, event_chunk in enumerate(event_chunks):
             # Create poll question
-            poll_question = f"🗳️ Choose your attendance for {today_date}"
+            poll_question = f"🗳️ Choose your attendance for {tomorrow_date}"
             if len(event_chunks) > 1:
                 poll_question += f" (Poll {chunk_index + 1}/{len(event_chunks)})"
             
@@ -134,7 +134,7 @@ async def publish_attendance_poll(
                 guild_id=guild.id,
                 channel_id=poll_channel.id,
                 message_id=message.id,
-                poll_date=today_date,
+                poll_date=tomorrow_date,
                 options=poll_options
             )
             
@@ -144,7 +144,7 @@ async def publish_attendance_poll(
             
             logger.info(f"Created poll {poll_meta.id} for {len(event_chunk)} events")
         
-        logger.info(f"Published {len(created_polls)} poll(s) for {today_date}")
+        logger.info(f"Published {len(created_polls)} poll(s) for {tomorrow_date}")
         return created_polls
         
     except Exception as e:
@@ -227,7 +227,7 @@ async def send_reminders(
 
                 embed = discord.Embed(
                     title="📝 Attendance Poll Reminder",
-                    description="You still have not voted in today's attendance poll. Please cast your vote!",
+                    description="You still have not voted in tomorrow's attendance poll. Please cast your vote!",
                     color=0xffa500
                 )
 
@@ -413,12 +413,8 @@ async def close_poll(
             
             # Save updated poll
             await save_poll(poll_meta.to_dict())
-            
-            # Publish feedback polls (no reminders required)
-            for option in poll_meta.options:
-                await create_feedback_poll(guild, option, guild_settings)
 
-            logger.info(f"Successfully closed poll {poll_meta.id} and published feedback polls")
+            logger.info(f"Successfully closed poll {poll_meta.id}")
             return True
         
     except Exception as e:
@@ -459,6 +455,62 @@ async def close_all_active_polls(
     except Exception as e:
         logger.error(f"Error closing active polls for guild {guild.id}: {e}")
         return 0
+
+async def publish_feedback_polls(
+    bot: discord.Client, 
+    guild: discord.Guild,
+    guild_settings: Dict[str, Any]
+) -> List[PollMeta]:
+    """
+    Publish feedback polls for today's events.
+    
+    Args:
+        bot: Discord bot instance
+        guild: Discord guild
+        guild_settings: Guild-specific settings
+    
+    Returns:
+        List of created PollMeta objects
+    """
+    try:
+        logger.info(f"Publishing feedback polls for guild {guild.id}")
+        
+        # Get today's date in guild timezone
+        timezone = guild_settings.get("timezone", "Europe/Helsinki")
+        today_date = tz_today(timezone)
+        
+        # Get today's events (only pollable ones)
+        events_data = await get_events_by_date(today_date)
+        events = [Event.from_dict(event) for event in events_data]
+        
+        # Filter for pollable events only
+        pollable_events = [e for e in events if e.is_pollable and not e.feedback_only]
+        
+        if not pollable_events:
+            logger.info(f"No pollable events for feedback polls on {today_date} in guild {guild.id}")
+            return []
+        
+        # Create feedback polls for each event
+        created_polls = []
+        
+        for event in pollable_events:
+            event_option = PollOption(
+                event_id=event.id,
+                title=f"{event.event_type.value.title()}: {event.title}",
+                event_type=event.event_type,
+            )
+            
+            feedback_poll = await create_feedback_poll(guild, event_option, guild_settings)
+            if feedback_poll:
+                created_polls.append(feedback_poll)
+                logger.info(f"Created feedback poll for event {event.id}: {event.title}")
+        
+        logger.info(f"Published {len(created_polls)} feedback poll(s) for {today_date}")
+        return created_polls
+        
+    except Exception as e:
+        logger.error(f"Error publishing feedback polls for guild {guild.id}: {e}")
+        return []
 
 FEEDBACK_OPTIONS: Dict[EventType, List[str]] = {
     EventType.LECTURE: [

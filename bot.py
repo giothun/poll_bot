@@ -23,8 +23,8 @@ from storage import (
     save_poll
 )
 from services.poll_manager import (
-    publish_attendance_poll, send_reminders, 
-    close_all_active_polls
+    publish_attendance_poll, send_reminders,
+    close_all_active_polls, publish_feedback_polls
 )
 from utils.time import is_valid_timezone
 
@@ -247,15 +247,17 @@ class CampPollBot(commands.Bot):
                 return
             
             # Parse times
-            publish_time = settings.get("poll_publish_time", "15:00").split(":")
+            publish_time = settings.get("poll_publish_time", "14:30").split(":")
             reminder_time = settings.get("reminder_time", "19:00").split(":")
             close_time = settings.get("poll_close_time", "09:00").split(":")
+            feedback_time = settings.get("feedback_publish_time", "22:00").split(":")
             
             # Remove existing jobs for this guild
             job_ids = [
                 f"poll_publish_{guild_id}",
                 f"poll_reminder_{guild_id}",
-                f"poll_close_{guild_id}"
+                f"poll_close_{guild_id}",
+                f"feedback_publish_{guild_id}"
             ]
             
             for job_id in job_ids:
@@ -301,6 +303,20 @@ class CampPollBot(commands.Bot):
                 ),
                 id=f"poll_close_{guild_id}",
                 name=f"Poll Close - Guild {guild_id}",
+                replace_existing=True
+            )
+            
+            # Add feedback publish job (daily at feedback time)
+            self.scheduler.add_job(
+                func=self.run_feedback_publish,
+                args=[guild_id],
+                trigger=CronTrigger(
+                    hour=int(feedback_time[0]),
+                    minute=int(feedback_time[1]),
+                    timezone=timezone
+                ),
+                id=f"feedback_publish_{guild_id}",
+                name=f"Feedback Publish - Guild {guild_id}",
                 replace_existing=True
             )
             
@@ -378,6 +394,32 @@ class CampPollBot(commands.Bot):
             
         except Exception as e:
             logger.error(f"Error in poll close task for guild {guild_id}: {e}")
+    
+    async def run_feedback_publish(self, guild_id: int):
+        """Run the feedback poll publishing task."""
+        try:
+            logger.info(f"Running feedback publish task for guild {guild_id}")
+            
+            guild = self.get_guild(guild_id)
+            if not guild:
+                logger.error(f"Guild {guild_id} not found")
+                return
+            
+            settings = await get_guild_settings(guild_id)
+            if not settings:
+                logger.error(f"No settings found for guild {guild_id}")
+                return
+            
+            # Publish feedback polls
+            polls = await publish_feedback_polls(self, guild, settings)
+            
+            if polls:
+                logger.info(f"Published {len(polls)} feedback poll(s) for guild {guild_id}")
+            else:
+                logger.info(f"No events for feedback polls in guild {guild_id}")
+            
+        except Exception as e:
+            logger.error(f"Error in feedback publish task for guild {guild_id}: {e}")
     
     async def on_error(self, event, *args, **kwargs):
         """Global error handler."""

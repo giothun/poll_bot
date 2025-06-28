@@ -16,9 +16,10 @@ class BotConfig:
     """Bot configuration from environment variables."""
     token: str
     timezone: str = "Europe/Helsinki"
-    poll_publish_time: str = "15:00"
+    poll_publish_time: str = "14:30"
     poll_close_time: str = "09:00"
     reminder_time: str = "19:00"
+    feedback_publish_time: str = "22:00"
     
     # Channel names (can be overridden per guild)
     poll_channel_name: str = "daily-polls"
@@ -40,9 +41,10 @@ class BotConfig:
         return cls(
             token=token,
             timezone=os.getenv("TIMEZONE", "Europe/Helsinki"),
-            poll_publish_time=os.getenv("POLL_PUBLISH_TIME", "15:00"),
-            poll_close_time=os.getenv("POLL_CLOSE_TIME", "09:00"),
-            reminder_time=os.getenv("REMINDER_TIME", "19:00"),
+                    poll_publish_time=os.getenv("POLL_PUBLISH_TIME", "14:30"),
+        poll_close_time=os.getenv("POLL_CLOSE_TIME", "09:00"),
+        reminder_time=os.getenv("REMINDER_TIME", "19:00"),
+        feedback_publish_time=os.getenv("FEEDBACK_PUBLISH_TIME", "22:00"),
             poll_channel_name=os.getenv("POLL_CHANNEL_NAME", "daily-polls"),
             organiser_channel_name=os.getenv("ORGANISER_CHANNEL_NAME", "organisers"),
             alerts_channel_name=os.getenv("ALERTS_CHANNEL_NAME", "bot-alerts"),

@@ -196,9 +196,10 @@ class GuildSettings:
     """Per-guild configuration settings."""
     guild_id: int
     timezone: str = "Europe/Helsinki"
-    poll_publish_time: str = "15:00"
+    poll_publish_time: str = "14:30"
     poll_close_time: str = "09:00"
     reminder_time: str = "19:00"
+    feedback_publish_time: str = "22:00"
     poll_channel_id: Optional[int] = None
     organiser_channel_id: Optional[int] = None
     alerts_channel_id: Optional[int] = None
@@ -211,6 +212,7 @@ class GuildSettings:
             "poll_publish_time": self.poll_publish_time,
             "poll_close_time": self.poll_close_time,
             "reminder_time": self.reminder_time,
+            "feedback_publish_time": self.feedback_publish_time,
             "poll_channel_id": self.poll_channel_id,
             "organiser_channel_id": self.organiser_channel_id,
             "alerts_channel_id": self.alerts_channel_id
