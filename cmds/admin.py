@@ -32,13 +32,11 @@ class AdminCommands(commands.Cog):
         """Global check for every app command in this cog."""
         user = interaction.user
         
-        # Log user roles for debugging
-        user_roles = [f"{r.name} (ID: {r.id})" for r in user.roles]
-        logger.info(f"User {user.name} ({user.id}) roles: {user_roles}")
+        if not user:
+            return False
         
         # Check administrator permissions
-        if user and user.guild_permissions.administrator:
-            logger.info(f"User {user.name} has administrator permissions")
+        if user.guild_permissions and user.guild_permissions.administrator:
             return True
         
         # Check for Organisers role (by name or ID)
@@ -47,26 +45,24 @@ class AdminCommands(commands.Cog):
              if r.name.lower() == "organisers" or r.id == 1367172527012712622), None
         )
         if organiser_role:
-            logger.info(f"User {user.name} has Organisers role: {organiser_role.name} (ID: {organiser_role.id})")
             return True
 
-        logger.warning(f"User {user.name} ({user.id}) denied access - no admin permissions or Organisers role")
-        
         # Send error message if no permission
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "❌ Only server administrators or users with the 'Organisers' role can use this command.",
-                    ephemeral=True,
-                )
-        except Exception as e:
-            logger.error(f"Failed to send permission error message: {e}")
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "❌ Only server administrators or users with the 'Organisers' role can use this command.",
+                ephemeral=True,
+            )
         
         return False
     
     async def cog_check(self, ctx) -> bool:
         """Ensure only administrators or Organisers can use these commands."""
-        if ctx.author.guild_permissions.administrator:
+        if not ctx.author:
+            return False
+            
+        # Check administrator permissions
+        if ctx.author.guild_permissions and ctx.author.guild_permissions.administrator:
             return True
         
         # Check for Organisers role (by name or ID)
