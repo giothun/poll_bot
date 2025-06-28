@@ -20,9 +20,6 @@ COPY . .
 # Create data directory
 RUN mkdir -p /app/data
 
-# Create volume for persistent data
-VOLUME ["/app/data"]
-
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
