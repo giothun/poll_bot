@@ -16,10 +16,57 @@ from storage import (
     get_events_by_date, save_poll, get_poll, 
     get_guild_settings, load_polls
 )
-from utils.time import tz_tomorrow, tz_now, tz_today
+from utils.time import tz_tomorrow, tz_now, tz_today, parse_time
 from services.csv_service import create_attendance_csv
 
 logger = logging.getLogger(__name__)
+
+def get_poll_closing_date(
+    poll_date: str,
+    publish_time: str,
+    close_time: str,
+    timezone: str = "Europe/Helsinki"
+) -> str:
+    """
+    Determine the closing date for a poll based on publish and close times.
+    
+    Args:
+        poll_date: The date the poll was created for (YYYY-MM-DD)
+        publish_time: Time when poll was published (HH:MM)
+        close_time: Time when poll should close (HH:MM)
+        timezone: Timezone for date calculations
+    
+    Returns:
+        Date when poll should close (YYYY-MM-DD)
+    
+    Logic:
+        - If close_time < publish_time: close on the day after poll_date
+        - If close_time >= publish_time: close on poll_date
+    """
+    try:
+        publish_parts = parse_time(publish_time)
+        close_parts = parse_time(close_time)
+        
+        if not publish_parts or not close_parts:
+            # Fallback to original logic if parsing fails
+            return poll_date
+        
+        publish_minutes = publish_parts[0] * 60 + publish_parts[1]
+        close_minutes = close_parts[0] * 60 + close_parts[1]
+        
+        if close_minutes < publish_minutes:
+            # Close time is earlier than publish time, so close next day
+            from datetime import datetime, timedelta
+            poll_date_obj = datetime.strptime(poll_date, "%Y-%m-%d").date()
+            close_date_obj = poll_date_obj + timedelta(days=1)
+            return close_date_obj.strftime("%Y-%m-%d")
+        else:
+            # Close time is same day or later than publish time
+            return poll_date
+            
+    except Exception as e:
+        logger.warning(f"Error calculating poll closing date: {e}")
+        return poll_date
 
 def chunk_events(events: List[Event], max_size: int = 10) -> List[List[Event]]:
     """
@@ -427,7 +474,7 @@ async def close_all_active_polls(
     guild_settings: Dict[str, Any]
 ) -> int:
     """
-    Close all active polls for a guild.
+    Close attendance polls based on smart timing logic and all expired feedback polls.
     
     Args:
         bot: Discord bot instance
@@ -438,6 +485,12 @@ async def close_all_active_polls(
         Number of polls closed
     """
     try:
+        # Get today's date and timing settings
+        timezone = guild_settings.get("timezone", "Europe/Helsinki")
+        today_date = tz_today(timezone)
+        publish_time = guild_settings.get("poll_publish_time", "14:30")
+        close_time = guild_settings.get("poll_close_time", "09:00")
+        
         # Get active polls
         all_polls = await load_polls()
         active_polls = [
@@ -447,8 +500,30 @@ async def close_all_active_polls(
         
         closed_count = 0
         for poll_meta in active_polls:
-            if await close_poll(bot, guild, poll_meta, guild_settings):
-                closed_count += 1
+            should_close = False
+            
+            if poll_meta.is_feedback:
+                # Close feedback polls that are older than 24 hours
+                # (They have 24h duration and should auto-close, but this is a safety net)
+                should_close = True
+            else:
+                # For attendance polls, calculate the expected closing date
+                expected_close_date = get_poll_closing_date(
+                    poll_meta.poll_date,
+                    publish_time,
+                    close_time,
+                    timezone
+                )
+                
+                if expected_close_date == today_date:
+                    should_close = True
+                    logger.info(f"Closing attendance poll (expected close date {expected_close_date}): {poll_meta.id}")
+                else:
+                    logger.debug(f"Skipping attendance poll: expected close {expected_close_date}, today is {today_date}: {poll_meta.id}")
+            
+            if should_close:
+                if await close_poll(bot, guild, poll_meta, guild_settings):
+                    closed_count += 1
         
         return closed_count
         

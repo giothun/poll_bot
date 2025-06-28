@@ -281,6 +281,138 @@ class TestEventFiltering:
         assert feedback_event.is_pollable is True  # Still pollable, but feedback only
 
 
+class TestPollClosingLogic:
+    """Test poll closing logic and timing."""
+    
+    @pytest.mark.asyncio
+    @patch('services.poll_manager.load_polls')
+    @patch('services.poll_manager.close_poll')
+    async def test_close_only_todays_attendance_polls(self, mock_close_poll, mock_load_polls):
+        """Test that only today's attendance polls are closed based on smart timing logic."""
+        from datetime import datetime, timezone
+        
+        # Mock polls data
+        today = tz_today("Europe/Helsinki")
+        tomorrow = tz_tomorrow("Europe/Helsinki")
+        
+        mock_polls = {
+            "poll1": {
+                "id": "poll1",
+                "guild_id": 12345,
+                "channel_id": 67890,
+                "message_id": 11111,
+                "poll_date": today,  # Today's poll - should be closed with default times (14:30 → 09:00 = next day)
+                "options": [],
+                "published_at": datetime.now(timezone.utc).isoformat(),
+                "closed_at": None,
+                "reminded_users": [],
+                "is_feedback": False
+            },
+            "poll2": {
+                "id": "poll2", 
+                "guild_id": 12345,
+                "channel_id": 67890,
+                "message_id": 22222,
+                "poll_date": tomorrow,  # Tomorrow's poll - should NOT be closed
+                "options": [],
+                "published_at": datetime.now(timezone.utc).isoformat(),
+                "closed_at": None,
+                "reminded_users": [],
+                "is_feedback": False
+            },
+            "poll3": {
+                "id": "poll3",
+                "guild_id": 12345,
+                "channel_id": 67890,
+                "message_id": 33333,
+                "poll_date": "feedback-event-id",  # Feedback poll - should be closed
+                "options": [],
+                "published_at": datetime.now(timezone.utc).isoformat(),
+                "closed_at": None,
+                "reminded_users": [],
+                "is_feedback": True
+            }
+        }
+        
+        mock_load_polls.return_value = mock_polls
+        mock_close_poll.return_value = True
+        
+        mock_guild = MagicMock()
+        mock_guild.id = 12345
+        mock_bot = MagicMock()
+        
+        # Use default times: 14:30 → 09:00 (close next day)
+        guild_settings = {
+            "timezone": "Europe/Helsinki",
+            "poll_publish_time": "14:30",
+            "poll_close_time": "09:00"
+        }
+        
+        # Call function
+        from services.poll_manager import close_all_active_polls
+        closed_count = await close_all_active_polls(mock_bot, mock_guild, guild_settings)
+        
+        # Should close 1 poll: only feedback poll (attendance poll closes next day with 14:30→09:00)
+        assert closed_count == 1
+        assert mock_close_poll.call_count == 1
+        
+        # Verify which polls were closed
+        closed_poll_ids = [call[0][2].id for call in mock_close_poll.call_args_list]
+        assert "poll3" in closed_poll_ids  # Feedback poll
+        assert "poll1" not in closed_poll_ids  # Today's attendance poll closes tomorrow (09:00 < 14:30)
+        assert "poll2" not in closed_poll_ids  # Tomorrow's poll should NOT be closed
+
+    @pytest.mark.asyncio
+    @patch('services.poll_manager.load_polls')
+    @patch('services.poll_manager.close_poll')
+    async def test_smart_closing_same_day(self, mock_close_poll, mock_load_polls):
+        """Test smart closing logic when close_time >= publish_time (same day closing)."""
+        from datetime import datetime, timezone
+        
+        today = tz_today("Europe/Helsinki")
+        
+        mock_polls = {
+            "poll1": {
+                "id": "poll1",
+                "guild_id": 12345,
+                "channel_id": 67890,
+                "message_id": 11111,
+                "poll_date": today,  # Today's poll - should be closed with 15:00 → 18:00 (same day)
+                "options": [],
+                "published_at": datetime.now(timezone.utc).isoformat(),
+                "closed_at": None,
+                "reminded_users": [],
+                "is_feedback": False
+            }
+        }
+        
+        mock_load_polls.return_value = mock_polls
+        mock_close_poll.return_value = True
+        
+        mock_guild = MagicMock()
+        mock_guild.id = 12345
+        mock_bot = MagicMock()
+        
+        # Use same-day times: 15:00 → 18:00 (close same day)
+        guild_settings = {
+            "timezone": "Europe/Helsinki",
+            "poll_publish_time": "15:00",
+            "poll_close_time": "18:00"
+        }
+        
+        # Call function
+        from services.poll_manager import close_all_active_polls
+        closed_count = await close_all_active_polls(mock_bot, mock_guild, guild_settings)
+        
+        # Should close 1 poll: today's attendance poll (18:00 >= 15:00 = same day)
+        assert closed_count == 1
+        assert mock_close_poll.call_count == 1
+        
+        # Verify which poll was closed
+        closed_poll_ids = [call[0][2].id for call in mock_close_poll.call_args_list]
+        assert "poll1" in closed_poll_ids  # Today's attendance poll closes today
+
+
 class TestErrorHandling:
     """Test error handling in poll manager."""
     
@@ -316,6 +448,7 @@ class TestErrorHandling:
                     'title': 'Test Event',
                     'date': tz_tomorrow(),
                     'event_type': 'lecture',
+                    'created_at': '2024-01-01T00:00:00+00:00',
                     'feedback_only': False
                 }
             ]

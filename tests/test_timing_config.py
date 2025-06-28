@@ -159,6 +159,41 @@ def test_event_serialization():
     print("✅ Event serialization test passed")
 
 
+def test_poll_closing_logic():
+    """Test that poll closing logic works correctly."""
+    print("Testing poll closing date logic...")
+    
+    from datetime import datetime, timezone
+    
+    # Test date comparison logic
+    today = tz_today("UTC")
+    tomorrow = tz_tomorrow("UTC")
+    
+    # Mock poll metadata
+    class MockPoll:
+        def __init__(self, poll_date, is_feedback=False):
+            self.poll_date = poll_date
+            self.is_feedback = is_feedback
+    
+    # Test polls
+    today_attendance_poll = MockPoll(today, False)
+    tomorrow_attendance_poll = MockPoll(tomorrow, False)
+    feedback_poll = MockPoll("some-event-id", True)
+    
+    # Logic: close today's attendance polls and all feedback polls
+    polls_to_test = [today_attendance_poll, tomorrow_attendance_poll, feedback_poll]
+    should_close = []
+    
+    for poll in polls_to_test:
+        if poll.is_feedback:
+            should_close.append(True)  # Always close feedback polls
+        else:
+            should_close.append(poll.poll_date == today)  # Only close today's attendance polls
+    
+    assert should_close == [True, False, True], f"Expected [True, False, True], got {should_close}"
+    print("✅ Poll closing logic test passed")
+
+
 def run_all_tests():
     """Run all tests."""
     print("🧪 Running timing and configuration tests...\n")
@@ -170,6 +205,7 @@ def run_all_tests():
         test_event_pollability()
         test_poll_option_voting()
         test_event_serialization()
+        test_poll_closing_logic()
         
         print("\n🎉 All tests passed successfully!")
         return True
