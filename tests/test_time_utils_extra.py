@@ -9,6 +9,8 @@ from utils.time import (
     next_occurrence,
     get_time_until,
     chunk_by_days,
+    to_unix_timestamp,
+    get_discord_timestamp,
 )
 
 # Freeze current time for deterministic tests
@@ -71,3 +73,40 @@ def test_chunk_by_days():
         "2024-12-27",
         "2024-12-28",
     ] 
+
+
+def test_to_unix_timestamp():
+    """Test conversion of datetime to Unix timestamp."""
+    # Test with a fixed datetime
+    dt = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    timestamp = to_unix_timestamp(dt)
+    
+    # 2024-01-01 12:00:00 UTC = 1704110400
+    assert timestamp == 1704110400
+    
+    # Test with a different timezone
+    dt_helsinki = datetime(2024, 1, 1, 12, 0, 0, tzinfo=ZoneInfo("Europe/Helsinki"))
+    timestamp_helsinki = to_unix_timestamp(dt_helsinki)
+    
+    # Should be 2 hours earlier than UTC (10:00 UTC)
+    assert timestamp_helsinki == 1704110400 - 7200
+
+
+def test_get_discord_timestamp():
+    """Test creation of Discord-formatted timestamps."""
+    # Test with default style
+    timestamp_str = get_discord_timestamp("2024-01-01", "12:00", "UTC", "f")
+    assert timestamp_str.startswith("<t:")
+    assert timestamp_str.endswith(":f>")
+    
+    # Extract the timestamp part and verify it's correct
+    timestamp_part = int(timestamp_str.split(":")[1])
+    assert timestamp_part == 1704110400
+    
+    # Test with different style
+    timestamp_str_relative = get_discord_timestamp("2024-01-01", "12:00", "UTC", "R")
+    assert timestamp_str_relative.endswith(":R>")
+    
+    # Test with invalid date/time
+    timestamp_str_invalid = get_discord_timestamp("invalid", "12:00", "UTC")
+    assert timestamp_str_invalid == "invalid 12:00"

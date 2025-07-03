@@ -192,3 +192,36 @@ def chunk_by_days(start_date: str, end_date: str) -> list[str]:
         return dates
     except ValueError:
         return [] 
+
+def to_unix_timestamp(dt: datetime) -> int:
+    """
+    Convert a datetime object to Unix timestamp (seconds since epoch).
+    
+    Args:
+        dt: Datetime object (timezone-aware)
+    
+    Returns:
+        Unix timestamp as an integer
+    """
+    return int(dt.timestamp())
+
+def get_discord_timestamp(date_str: str, time_str: str, timezone: str, style: str = "f") -> str:
+    """
+    Get a Discord-formatted timestamp for a specific date and time.
+    
+    Args:
+        date_str: Date in YYYY-MM-DD format
+        time_str: Time in HH:MM format
+        timezone: Timezone name (e.g., "Europe/Helsinki")
+        style: Discord timestamp style (t=short time, T=long time, d=short date, 
+               D=long date, f=short date/time, F=long date/time, R=relative)
+    
+    Returns:
+        Discord-formatted timestamp string (<t:timestamp:style>)
+    """
+    dt = create_scheduled_time(date_str, time_str, timezone)
+    if not dt:
+        return f"{date_str} {time_str}"
+    
+    timestamp = to_unix_timestamp(dt)
+    return f"<t:{timestamp}:{style}>"

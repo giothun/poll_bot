@@ -16,7 +16,7 @@ from storage import (
     get_events_by_date, save_poll, get_poll, 
     get_guild_settings, load_polls
 )
-from utils.time import tz_tomorrow, tz_now, tz_today, parse_time
+from utils.time import tz_tomorrow, tz_now, tz_today, parse_time, get_discord_timestamp, to_unix_timestamp
 from services.csv_service import create_attendance_csv
 
 logger = logging.getLogger(__name__)
@@ -272,23 +272,49 @@ async def send_reminders(
                 first_poll = polls_for_user[0]
                 poll_channel = guild.get_channel(first_poll.channel_id)
 
+                # Get timing settings
+                close_time = guild_settings.get("poll_close_time", "09:00")
+                publish_time = guild_settings.get("poll_publish_time", "14:30")
+                timezone = guild_settings.get("timezone", "Europe/Helsinki")
+                
+                # Calculate the correct deadline date using the same logic as poll closing
+                deadline_date = get_poll_closing_date(
+                    first_poll.poll_date,
+                    publish_time,
+                    close_time,
+                    timezone
+                )
+                
+                # Determine if deadline is today or tomorrow
+                today_date = tz_today(timezone)
+                deadline_is_today = deadline_date == today_date
+                
+                deadline_text = "today" if deadline_is_today else "tomorrow"
+                
                 embed = discord.Embed(
                     title="📝 Attendance Poll Reminder",
-                    description="You still have not voted in tomorrow's attendance poll. Please cast your vote!",
+                    description=f"You still have not voted in the attendance poll for tomorrow's events. Please cast your vote before the deadline {deadline_text}!",
                     color=0xffa500
                 )
 
                 if poll_channel:
                     embed.add_field(
                         name="🗳️ Poll Channel",
-                        value=f"#{poll_channel.name}",
+                        value=f"<#{poll_channel.id}>",
                         inline=False
                     )
-
-                close_time = guild_settings.get("poll_close_time", "09:00")
+                
+                # Format using Discord timestamp
+                deadline_timestamp = get_discord_timestamp(
+                    deadline_date, 
+                    close_time, 
+                    timezone, 
+                    style="F"  # Long date/time format
+                )
+                
                 embed.add_field(
                     name="⏰ Deadline",
-                    value=f"Tomorrow at {close_time}",
+                    value=deadline_timestamp,
                     inline=False
                 )
 
@@ -441,7 +467,9 @@ async def close_poll(
             
             embed.add_field(name="🏆 Results", value=results_text, inline=False)
             
-            embed.set_footer(text=f"Poll closed at {poll_meta.closed_at.strftime('%Y-%m-%d %H:%M UTC')}")
+            # Convert closed_at to Unix timestamp and use Discord timestamp format
+            closed_timestamp = to_unix_timestamp(poll_meta.closed_at)
+            embed.set_footer(text=f"Poll closed at <t:{closed_timestamp}:F>")
             
             # Send results
             await organiser_channel.send(embed=embed)
