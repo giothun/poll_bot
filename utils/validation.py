@@ -294,6 +294,30 @@ def validate_role_id(role_id_str: str) -> ValidationResult:
         return ValidationResult(False, "Role ID must be a valid number")
 
 
+def get_missing_permissions(channel, required_permissions: List[str]) -> List[str]:
+    """
+    Get list of missing permissions for a channel.
+    
+    Args:
+        channel: Discord channel object
+        required_permissions: List of permission names to check
+    
+    Returns:
+        List of missing permission names
+    """
+    if not hasattr(channel, 'permissions_for') or not hasattr(channel, 'guild'):
+        return required_permissions  # Assume all permissions are missing if invalid channel
+    
+    bot_permissions = channel.permissions_for(channel.guild.me)
+    missing_permissions = []
+    
+    for perm_name in required_permissions:
+        if not getattr(bot_permissions, perm_name, False):
+            missing_permissions.append(perm_name)
+    
+    return missing_permissions
+
+
 def validate_channel_permissions(
     channel,
     required_permissions: List[str]
@@ -308,15 +332,7 @@ def validate_channel_permissions(
     Returns:
         ValidationResult with validation status and missing permissions
     """
-    if not hasattr(channel, 'permissions_for') or not hasattr(channel, 'guild'):
-        return ValidationResult(False, "Invalid channel object")
-    
-    bot_permissions = channel.permissions_for(channel.guild.me)
-    missing_permissions = []
-    
-    for perm_name in required_permissions:
-        if not getattr(bot_permissions, perm_name, False):
-            missing_permissions.append(perm_name)
+    missing_permissions = get_missing_permissions(channel, required_permissions)
     
     if missing_permissions:
         return ValidationResult(
