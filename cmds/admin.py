@@ -375,17 +375,18 @@ class AdminCommands(commands.Cog):
             await self.bot.setup_guild_jobs(interaction.guild_id, guild_settings)
             
             # Create success embed
-            embed = (EmbedBuilder("Camp Mode Updated")
+            embed_builder = (EmbedBuilder("Camp Mode Updated")
                     .add_field("🏕️ Mode", mode.title(), inline=True)
-                    .add_field("📍 Description", mode_description, inline=False)
-                    .build())
+                    .add_field("📍 Description", mode_description, inline=False))
             
             if mode == "cyprus":
-                embed.add_field(
+                embed_builder.add_field(
                     "⏰ Schedule", 
                     "• 23:00 Cyprus Time: Daily feedback polls\n• No attendance polls\n• No reminders", 
                     inline=False
                 )
+            
+            embed = embed_builder.build()
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
