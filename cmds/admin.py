@@ -372,7 +372,7 @@ class AdminCommands(commands.Cog):
             await save_guild_setting(guild_settings)
             
             # Update scheduler with new mode
-            await self.bot.scheduler_service.setup_guild_jobs(interaction.guild_id, guild_settings)
+            await self.bot.setup_guild_jobs(interaction.guild_id, guild_settings)
             
             # Create success embed
             embed = (EmbedBuilder("Camp Mode Updated")
