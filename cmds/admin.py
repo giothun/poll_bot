@@ -352,6 +352,8 @@ class AdminCommands(commands.Cog):
             
             mode = mode.lower()
             guild_settings = await get_guild_settings(interaction.guild_id)
+            if not guild_settings:
+                guild_settings = GuildSettings(guild_id=interaction.guild_id).to_dict()
             
             # Set camp mode
             guild_settings["camp_mode"] = mode
