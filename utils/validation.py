@@ -10,7 +10,7 @@ from typing import Optional, Tuple, List, Dict, Any, Union
 from zoneinfo import ZoneInfo
 
 from models import EventType
-from utils.time import parse_time, is_valid_timezone
+from utils.time import parse_time, is_valid_timezone, parse_flexible_date
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,40 @@ def validate_date_format(date_str: str) -> ValidationResult:
     try:
         # Try to parse the date
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        return ValidationResult(True, cleaned_value=parsed_date)
+    except ValueError as e:
+        return ValidationResult(False, f"Invalid date: {str(e)}")
+
+
+def validate_flexible_date_format(date_str: str) -> ValidationResult:
+    """
+    Validate flexible date string and return the next matching date.
+    
+    Supports:
+    - YYYY-MM-DD: exact date
+    - MM-DD: next occurrence of this month/day
+    - DD: next occurrence of this day of month
+    
+    Args:
+        date_str: Date string to validate
+    
+    Returns:
+        ValidationResult with validation status and parsed date object
+    """
+    if not date_str or not isinstance(date_str, str):
+        return ValidationResult(False, "Date string is required")
+    
+    # Use the flexible date parser
+    parsed_date_str = parse_flexible_date(date_str)
+    if not parsed_date_str:
+        return ValidationResult(
+            False, 
+            "Invalid date format. Use YYYY-MM-DD, MM-DD, or DD (e.g., 2024-12-25, 12-25, or 25)"
+        )
+    
+    try:
+        # Convert back to date object
+        parsed_date = datetime.strptime(parsed_date_str, "%Y-%m-%d").date()
         return ValidationResult(True, cleaned_value=parsed_date)
     except ValueError as e:
         return ValidationResult(False, f"Invalid date: {str(e)}")
@@ -184,10 +218,13 @@ def validate_event_type(event_type: Union[str, EventType]) -> ValidationResult:
 
 def validate_date_title_format(date_title: str) -> ValidationResult:
     """
-    Validate date;title format used in admin commands.
+    Validate flexible date;title format used in admin commands.
     
     Args:
-        date_title: String in format "YYYY-MM-DD;Title"
+        date_title: String in format "DATE;Title" where DATE can be:
+                   - YYYY-MM-DD (exact date)
+                   - MM-DD (next occurrence)
+                   - DD (next occurrence)
     
     Returns:
         ValidationResult with validation status and tuple of (date, title)
@@ -198,20 +235,20 @@ def validate_date_title_format(date_title: str) -> ValidationResult:
     if ";" not in date_title:
         return ValidationResult(
             False,
-            "Invalid format. Use: YYYY-MM-DD;Title (e.g., 2024-12-25;Search Algorithms)"
+            "Invalid format. Use: DATE;Title (e.g., 2024-12-25;Title, 12-25;Title, or 25;Title)"
         )
     
     parts = date_title.split(";", 1)
     if len(parts) != 2:
         return ValidationResult(
             False,
-            "Invalid format. Use: YYYY-MM-DD;Title"
+            "Invalid format. Use: DATE;Title"
         )
     
     date_str, title = parts[0].strip(), parts[1].strip()
     
-    # Validate date part
-    date_result = validate_date_format(date_str)
+    # Validate date part using flexible date parser
+    date_result = validate_flexible_date_format(date_str)
     if not date_result:
         return ValidationResult(False, f"Date validation failed: {date_result.error_message}")
     

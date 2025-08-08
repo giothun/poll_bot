@@ -265,3 +265,102 @@ def get_poll_closing_date(
     except Exception as e:
         logger.warning(f"Error calculating poll closing date: {e}")
         return poll_date
+
+
+def parse_flexible_date(date_input: str) -> Optional[str]:
+    """
+    Parse flexible date input and return the next matching date in YYYY-MM-DD format.
+    
+    Supports:
+    - YYYY-MM-DD: exact date
+    - MM-DD: next occurrence of this month/day
+    - DD: next occurrence of this day of month
+    
+    Args:
+        date_input: Date string in one of the supported formats
+        
+    Returns:
+        Date string in YYYY-MM-DD format, or None if invalid
+    """
+    from datetime import datetime, timedelta
+    import re
+    
+    if not date_input or not isinstance(date_input, str):
+        return None
+    
+    date_input = date_input.strip()
+    today = datetime.now().date()
+    
+    # YYYY-MM-DD format (exact date)
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_input):
+        try:
+            parsed_date = datetime.strptime(date_input, "%Y-%m-%d").date()
+            return parsed_date.strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+    
+    # MM-DD format (next occurrence of this month/day)
+    elif re.match(r'^\d{1,2}-\d{1,2}$', date_input):
+        try:
+            month, day = map(int, date_input.split('-'))
+            if month < 1 or month > 12 or day < 1 or day > 31:
+                return None
+            
+            # Try current year first
+            try:
+                target_date = datetime(today.year, month, day).date()
+                if target_date > today:
+                    return target_date.strftime("%Y-%m-%d")
+            except ValueError:
+                # Invalid date (e.g., Feb 30)
+                pass
+            
+            # Try next year
+            try:
+                target_date = datetime(today.year + 1, month, day).date()
+                return target_date.strftime("%Y-%m-%d")
+            except ValueError:
+                return None
+                
+        except (ValueError, IndexError):
+            return None
+    
+    # DD format (next occurrence of this day)
+    elif re.match(r'^\d{1,2}$', date_input):
+        try:
+            day = int(date_input)
+            if day < 1 or day > 31:
+                return None
+            
+            # Try current month first
+            try:
+                target_date = datetime(today.year, today.month, day).date()
+                if target_date > today:
+                    return target_date.strftime("%Y-%m-%d")
+            except ValueError:
+                # Day doesn't exist in current month
+                pass
+            
+            # Try next months until we find a valid date
+            current = today.replace(day=1)  # First day of current month
+            for _ in range(12):  # Search up to 12 months ahead
+                # Move to next month
+                if current.month == 12:
+                    current = current.replace(year=current.year + 1, month=1)
+                else:
+                    current = current.replace(month=current.month + 1)
+                
+                try:
+                    target_date = current.replace(day=day)
+                    if target_date > today:
+                        return target_date.strftime("%Y-%m-%d")
+                except ValueError:
+                    # Day doesn't exist in this month (e.g., Feb 30)
+                    continue
+            
+            return None
+            
+        except ValueError:
+            return None
+    
+    return None

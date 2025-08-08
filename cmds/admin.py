@@ -404,7 +404,7 @@ class AdminCommands(commands.Cog):
     
     @app_commands.command(name="addlecture", description="Add a new lecture")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Search Algorithms)",
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)",
         feedback_only="Skip attendance poll and publish only feedback"
     )
     async def add_lecture(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
@@ -413,7 +413,7 @@ class AdminCommands(commands.Cog):
     
     @app_commands.command(name="addcontest", description="Add a new contest")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Graph Challenge)",
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)",
         feedback_only="Skip attendance poll and publish only feedback"
     )
     async def add_contest(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
@@ -422,7 +422,7 @@ class AdminCommands(commands.Cog):
     
     @app_commands.command(name="addextralecture", description="Add an extra lecture (not included in polls)")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;DevOps 101)",
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)",
         feedback_only="Skip attendance poll and publish only feedback"
     )
     async def add_extra_lecture(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
@@ -431,7 +431,7 @@ class AdminCommands(commands.Cog):
     
     @app_commands.command(name="addeveningactivity", description="Add an evening activity (not included in polls)")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Movie Night)",
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)",
         feedback_only="Skip attendance poll and publish only feedback"
     )
     async def add_evening_activity(self, interaction: discord.Interaction, date_title: str, feedback_only: bool = False):
@@ -440,7 +440,7 @@ class AdminCommands(commands.Cog):
     
     @app_commands.command(name="addcontesteditorial", description="Add a contest editorial session")
     @app_commands.describe(
-        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Contest A Editorial)"
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
     )
     async def add_contest_editorial(self, interaction: discord.Interaction, date_title: str):
         """Add a contest editorial event (Cyprus camp mode)."""
@@ -461,7 +461,7 @@ class AdminCommands(commands.Cog):
             validation_result = validate_date_title_format(date_title)
             if not validation_result:
                 error_msg = format_message(MessageType.ERROR, 'invalid_format', 
-                                         expected_format="YYYY-MM-DD;Title")
+                                         expected_format="DATE;Title (DATE: 2025-06-12, 06-12, or 12)")
                 await interaction.followup.send(f"{error_msg}\n{validation_result.error_message}", ephemeral=True)
                 return
             
@@ -638,7 +638,7 @@ class AdminCommands(commands.Cog):
     @app_commands.command(name="editlecture", description="Edit a lecture")
     @app_commands.describe(
         event_id="Event ID to edit",
-        date_title="New format: YYYY-MM-DD;Title"
+        date_title="New format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
     )
     async def edit_lecture(self, interaction: discord.Interaction, event_id: str, date_title: str):
         """Edit an existing lecture event."""
@@ -647,7 +647,7 @@ class AdminCommands(commands.Cog):
     @app_commands.command(name="editcontest", description="Edit a contest")
     @app_commands.describe(
         event_id="Event ID to edit",
-        date_title="New format: YYYY-MM-DD;Title"
+        date_title="New format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
     )
     async def edit_contest(self, interaction: discord.Interaction, event_id: str, date_title: str):
         """Edit an existing contest event."""
@@ -656,7 +656,7 @@ class AdminCommands(commands.Cog):
     @app_commands.command(name="editextralecture", description="Edit an extra lecture")
     @app_commands.describe(
         event_id="Event ID to edit",
-        date_title="New format: YYYY-MM-DD;Title"
+        date_title="New format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
     )
     async def edit_extra_lecture(self, interaction: discord.Interaction, event_id: str, date_title: str):
         """Edit an existing extra lecture event."""
@@ -665,7 +665,7 @@ class AdminCommands(commands.Cog):
     @app_commands.command(name="editeveningactivity", description="Edit an evening activity")
     @app_commands.describe(
         event_id="Event ID to edit",
-        date_title="New format: YYYY-MM-DD;Title"
+        date_title="New format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
     )
     async def edit_evening_activity(self, interaction: discord.Interaction, event_id: str, date_title: str):
         """Edit an existing evening activity event."""
@@ -674,7 +674,7 @@ class AdminCommands(commands.Cog):
     @app_commands.command(name="editcontesteditorial", description="Edit a contest editorial")
     @app_commands.describe(
         event_id="Event ID to edit",
-        date_title="Format: YYYY-MM-DD;Title"
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
     )
     async def edit_contest_editorial(self, interaction: discord.Interaction, event_id: str, date_title: str):
         """Edit an existing contest editorial event."""
