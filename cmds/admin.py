@@ -4,7 +4,7 @@ Handles event management and bot configuration.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import discord
 from discord.ext import commands
@@ -17,7 +17,15 @@ from storage import (
     update_event, delete_event, get_guild_settings,
     save_guild_setting
 )
-from utils.time import is_valid_timezone, parse_time
+from utils.validation import (
+    validate_timezone, validate_date_title_format, validate_poll_times_format,
+    validate_role_id, validate_channel_permissions, get_missing_permissions
+)
+from utils.discord import (
+    create_success_embed, create_error_embed, create_info_embed,
+    create_event_embed, safe_send_message, EmbedBuilder
+)
+from utils.messages import MessageType, format_message, format_event_display
 
 logger = logging.getLogger(__name__)
 
@@ -39,20 +47,21 @@ class AdminCommands(commands.Cog):
         if user.guild_permissions and user.guild_permissions.administrator:
             return True
         
-        # Check for Organisers role (by name or ID)
+        # Check for Organisers role (by name or configured ID)
+        guild_settings = await get_guild_settings(interaction.guild_id)
+        configured_role_id = (guild_settings or {}).get("organiser_role_id") if guild_settings else None
         organiser_role = next(
             (r for r in user.roles 
-             if r.name.lower() == "organisers" or r.id == 1367172527012712622), None
+             if r.name.lower() == "organisers" or (configured_role_id and r.id == configured_role_id)), None
         )
         if organiser_role:
             return True
 
         # Send error message if no permission
         if not interaction.response.is_done():
-            await interaction.response.send_message(
-                "❌ Only server administrators or users with the 'Organisers' role can use this command.",
-                ephemeral=True,
-            )
+            error_msg = format_message(MessageType.ERROR, 'permission_denied')
+            error_msg += " Only server administrators or users with the 'Organisers' role can use this command."
+            await interaction.response.send_message(error_msg, ephemeral=True)
         
         return False
     
@@ -65,10 +74,12 @@ class AdminCommands(commands.Cog):
         if ctx.author.guild_permissions and ctx.author.guild_permissions.administrator:
             return True
         
-        # Check for Organisers role (by name or ID)
+        # Check for Organisers role (by name or configured ID)
+        guild_settings = await get_guild_settings(ctx.guild.id)
+        configured_role_id = (guild_settings or {}).get("organiser_role_id") if guild_settings else None
         organiser_role = next(
             (r for r in ctx.author.roles 
-             if r.name.lower() == "organisers" or r.id == 1367172527012712622), None
+             if r.name.lower() == "organisers" or (configured_role_id and r.id == configured_role_id)), None
         )
         return organiser_role is not None
     
@@ -90,17 +101,21 @@ class AdminCommands(commands.Cog):
             await interaction.response.defer(ephemeral=True)
             
             # Verify bot permissions in each channel
+            required_permissions = ['send_messages', 'embed_links']
             for channel, purpose in [
                 (poll_channel, "poll"),
                 (organiser_channel, "organiser"),
                 (alerts_channel, "alerts")
             ]:
-                perms = channel.permissions_for(interaction.guild.me)
-                if not (perms.send_messages and perms.embed_links):
-                    await interaction.followup.send(
-                        f"❌ Bot needs 'Send Messages' and 'Embed Links' permissions in {channel.mention} ({purpose} channel)",
-                        ephemeral=True
+                missing_perms = get_missing_permissions(channel, required_permissions)
+                if missing_perms:
+                    error_msg = format_message(
+                        MessageType.ERROR,
+                        'missing_permissions',
+                        permissions=', '.join(missing_perms),
+                        channel=f"{channel.mention} ({purpose} channel)"
                     )
+                    await interaction.followup.send(error_msg, ephemeral=True)
                     return
             
             # Get or create guild settings
@@ -117,25 +132,11 @@ class AdminCommands(commands.Cog):
             await save_guild_setting(guild_settings)
             
             # Create response embed
-            embed = discord.Embed(
-                title="✅ Bot Channels Configured",
-                color=0x00ff00
-            )
-            embed.add_field(
-                name="📊 Poll Channel",
-                value=poll_channel.mention,
-                inline=False
-            )
-            embed.add_field(
-                name="📈 Results Channel",
-                value=organiser_channel.mention,
-                inline=False
-            )
-            embed.add_field(
-                name="⚠️ Alerts Channel",
-                value=alerts_channel.mention,
-                inline=False
-            )
+            embed = (EmbedBuilder("Bot Channels Configured")
+                    .add_field("📊 Poll Channel", poll_channel.mention, inline=False)
+                    .add_field("📈 Results Channel", organiser_channel.mention, inline=False)
+                    .add_field("⚠️ Alerts Channel", alerts_channel.mention, inline=False)
+                    .build())
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -173,8 +174,67 @@ class AdminCommands(commands.Cog):
                     "❌ An error occurred while setting up channels.",
                     ephemeral=True
                 )
-            except:
-                pass
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="setstudentroleid", description="Set the Student role ID for reminders")
+    @app_commands.describe(role_id="Numeric ID of the Student role")
+    async def set_student_role_id(self, interaction: discord.Interaction, role_id: str):
+        """Store student_role_id in guild settings (used for reminders)."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Validate role ID
+            validation_result = validate_role_id(role_id)
+            if not validation_result:
+                error_msg = format_message(MessageType.ERROR, 'invalid_format', 
+                                         expected_format="valid Discord role ID")
+                await interaction.followup.send(f"{error_msg}\n{validation_result.error_message}", ephemeral=True)
+                return
+
+            settings = await get_guild_settings(interaction.guild_id)
+            if not settings:
+                settings = GuildSettings(guild_id=interaction.guild_id).to_dict()
+            settings["student_role_id"] = validation_result.cleaned_value
+            await save_guild_setting(settings)
+
+            success_msg = format_message(MessageType.SUCCESS, 'settings_updated', 
+                                       setting_name=f"student_role_id to `{validation_result.cleaned_value}`")
+            await interaction.followup.send(success_msg, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error setting student_role_id: {e}")
+            try:
+                await interaction.followup.send("❌ Failed to set student_role_id.", ephemeral=True)
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="setorganiserroleid", description="Set the Organisers role ID for admin checks")
+    @app_commands.describe(role_id="Numeric ID of the Organisers role")
+    async def set_organiser_role_id(self, interaction: discord.Interaction, role_id: str):
+        """Store organiser_role_id in guild settings (used for permission checks)."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            try:
+                parsed = int(role_id)
+                if parsed <= 0:
+                    raise ValueError
+            except ValueError:
+                await interaction.followup.send("❌ Invalid role ID.", ephemeral=True)
+                return
+
+            settings = await get_guild_settings(interaction.guild_id)
+            if not settings:
+                settings = GuildSettings(guild_id=interaction.guild_id).to_dict()
+            settings["organiser_role_id"] = parsed
+            await save_guild_setting(settings)
+
+            await interaction.followup.send(f"✅ organiser_role_id set to `{parsed}`.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error setting organiser_role_id: {e}")
+            try:
+                await interaction.followup.send("❌ Failed to set organiser_role_id.", ephemeral=True)
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
     
     @app_commands.command(name="settimezone", description="Set the timezone for this server")
     @app_commands.describe(timezone="Timezone name (e.g., Europe/Helsinki, America/New_York)")
@@ -183,12 +243,11 @@ class AdminCommands(commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
             
-            if not is_valid_timezone(timezone):
-                await interaction.followup.send(
-                    f"❌ Invalid timezone: `{timezone}`\n"
-                    "Please use a valid IANA timezone name (e.g., Europe/Helsinki, America/New_York)",
-                    ephemeral=True
-                )
+            # Validate timezone
+            validation_result = validate_timezone(timezone)
+            if not validation_result:
+                error_msg = format_message(MessageType.ERROR, 'invalid_timezone', timezone=timezone)
+                await interaction.followup.send(f"{error_msg}\n{validation_result.error_message}", ephemeral=True)
                 return
             
             # Get or create guild settings
@@ -196,15 +255,14 @@ class AdminCommands(commands.Cog):
             if not guild_settings:
                 guild_settings = GuildSettings(guild_id=interaction.guild_id).to_dict()
             
-            guild_settings["timezone"] = timezone
+            guild_settings["timezone"] = validation_result.cleaned_value
             
             # Save settings
             await save_guild_setting(guild_settings)
             
-            await interaction.followup.send(
-                f"✅ Timezone set to `{timezone}` for this server.",
-                ephemeral=True
-            )
+            success_msg = format_message(MessageType.SUCCESS, 'settings_updated', 
+                                       setting_name=f"timezone to `{validation_result.cleaned_value}`")
+            await interaction.followup.send(success_msg, ephemeral=True)
             
             logger.info(f"Timezone set to {timezone} for guild {interaction.guild_id}")
             
@@ -218,8 +276,8 @@ class AdminCommands(commands.Cog):
                     "❌ An error occurred while setting the timezone.",
                     ephemeral=True
                 )
-            except:
-                pass
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
     
     @app_commands.command(name="setpolltimes", description="Set poll timing (publish;close;reminder)")
     @app_commands.describe(times="Format: HH:MM;HH:MM;HH:MM (publish;close;reminder)")
@@ -228,26 +286,18 @@ class AdminCommands(commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
             
-            parts = times.split(";")
-            if len(parts) != 3:
-                await interaction.followup.send(
-                    "❌ Invalid format. Use: `HH:MM;HH:MM;HH:MM` (publish;close;reminder)\n"
-                    "Example: `15:00;09:00;19:00`",
-                    ephemeral=True
-                )
+            # Validate poll times format
+            validation_result = validate_poll_times_format(times)
+            if not validation_result:
+                error_msg = format_message(MessageType.ERROR, 'invalid_format', 
+                                         expected_format="HH:MM;HH:MM;HH:MM (publish;close;reminder)")
+                await interaction.followup.send(f"{error_msg}\n{validation_result.error_message}", ephemeral=True)
                 return
             
-            publish_time, close_time, reminder_time = parts
-            
-            # Validate time formats
-            for time_str, name in [(publish_time, "publish"), (close_time, "close"), (reminder_time, "reminder")]:
-                if not parse_time(time_str.strip()):
-                    await interaction.followup.send(
-                        f"❌ Invalid {name} time format: `{time_str}`\n"
-                        "Please use HH:MM format (24-hour)",
-                        ephemeral=True
-                    )
-                    return
+            publish_time_tuple, close_time_tuple, reminder_time_tuple = validation_result.cleaned_value
+            publish_time = f"{publish_time_tuple[0]:02d}:{publish_time_tuple[1]:02d}"
+            close_time = f"{close_time_tuple[0]:02d}:{close_time_tuple[1]:02d}"
+            reminder_time = f"{reminder_time_tuple[0]:02d}:{reminder_time_tuple[1]:02d}"
             
             # Get or create guild settings
             guild_settings = await get_guild_settings(interaction.guild_id)
@@ -261,13 +311,11 @@ class AdminCommands(commands.Cog):
             # Save settings
             await save_guild_setting(guild_settings)
             
-            embed = discord.Embed(
-                title="✅ Poll Times Updated",
-                color=0x00ff00
-            )
-            embed.add_field(name="📢 Publish Time", value=publish_time.strip(), inline=True)
-            embed.add_field(name="⏰ Reminder Time", value=reminder_time.strip(), inline=True)
-            embed.add_field(name="🔒 Close Time", value=close_time.strip(), inline=True)
+            embed = (EmbedBuilder("Poll Times Updated")
+                    .add_field("📢 Publish Time", publish_time, inline=True)
+                    .add_field("⏰ Reminder Time", reminder_time, inline=True)
+                    .add_field("🔒 Close Time", close_time, inline=True)
+                    .build())
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -283,8 +331,73 @@ class AdminCommands(commands.Cog):
                     "❌ An error occurred while setting poll times.",
                     ephemeral=True
                 )
-            except:
-                pass
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
+    
+    @app_commands.command(name="setcampmode", description="Set camp operation mode")
+    @app_commands.describe(
+        mode="Mode: 'cyprus' for feedback-only at 23:00, 'standard' for full polls"
+    )
+    async def set_camp_mode(self, interaction: discord.Interaction, mode: str):
+        """Set the camp operation mode."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            if mode.lower() not in ["cyprus", "standard"]:
+                await interaction.followup.send(
+                    "❌ Mode must be 'cyprus' or 'standard'", 
+                    ephemeral=True
+                )
+                return
+            
+            mode = mode.lower()
+            guild_settings = await get_guild_settings(interaction.guild_id)
+            
+            # Set camp mode
+            guild_settings["camp_mode"] = mode
+            
+            if mode == "cyprus":
+                # Cyprus mode: configure defaults
+                guild_settings["timezone"] = "Europe/Nicosia"
+                guild_settings["feedback_publish_time"] = "23:00"
+                mode_description = "Cyprus Camp (feedback-only at 23:00 Cyprus time)"
+            else:
+                # Standard mode: keep existing settings or use defaults
+                if "timezone" not in guild_settings:
+                    guild_settings["timezone"] = "Europe/Helsinki"
+                mode_description = "Standard Camp (full poll schedule)"
+            
+            await save_guild_setting(guild_settings)
+            
+            # Update scheduler with new mode
+            await self.bot.scheduler_service.setup_guild_jobs(interaction.guild_id, guild_settings)
+            
+            # Create success embed
+            embed = (EmbedBuilder("Camp Mode Updated")
+                    .add_field("🏕️ Mode", mode.title(), inline=True)
+                    .add_field("📍 Description", mode_description, inline=False)
+                    .build())
+            
+            if mode == "cyprus":
+                embed.add_field(
+                    "⏰ Schedule", 
+                    "• 23:00 Cyprus Time: Daily feedback polls\n• No attendance polls\n• No reminders", 
+                    inline=False
+                )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            logger.info(f"Camp mode set to '{mode}' for guild {interaction.guild_id}")
+            
+        except Exception as e:
+            logger.error(f"Error setting camp mode: {e}")
+            try:
+                await interaction.followup.send(
+                    "❌ An error occurred while setting camp mode.",
+                    ephemeral=True
+                )
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
     
     @app_commands.command(name="addlecture", description="Add a new lecture")
     @app_commands.describe(
@@ -322,6 +435,14 @@ class AdminCommands(commands.Cog):
         """Add an evening activity event (not polled)."""
         await self._add_event_from_string(interaction, date_title, EventType.EVENING_ACTIVITY, feedback_only)
     
+    @app_commands.command(name="addcontesteditorial", description="Add a contest editorial session")
+    @app_commands.describe(
+        date_title="Format: YYYY-MM-DD;Title (e.g., 2025-06-12;Contest A Editorial)"
+    )
+    async def add_contest_editorial(self, interaction: discord.Interaction, date_title: str):
+        """Add a contest editorial event (Cyprus camp mode)."""
+        await self._add_event_from_string(interaction, date_title, EventType.CONTEST_EDITORIAL, feedback_only=True)
+    
     async def _add_event_from_string(
         self,
         interaction: discord.Interaction,
@@ -333,36 +454,30 @@ class AdminCommands(commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
             
-            if ";" not in date_title:
-                await interaction.followup.send(
-                    "❌ Invalid format. Use: `YYYY-MM-DD;Title`\n"
-                    "Example: `2025-06-12;Search Algorithms`",
-                    ephemeral=True
-                )
+            # Validate date;title format
+            validation_result = validate_date_title_format(date_title)
+            if not validation_result:
+                error_msg = format_message(MessageType.ERROR, 'invalid_format', 
+                                         expected_format="YYYY-MM-DD;Title")
+                await interaction.followup.send(f"{error_msg}\n{validation_result.error_message}", ephemeral=True)
                 return
             
-            if ";" not in date_title:
-                await interaction.followup.send(
-                    "❌ Invalid format. Use: YYYY-MM-DD;Title\n"
-                    "Example: `2025-06-12;Search Algorithms`",
-                    ephemeral=True
-                )
-                return
-            date, title = date_title.split(";", 1)
+            date, title = validation_result.cleaned_value
+            date_str = date.strftime("%Y-%m-%d")
             
             # Prevent duplicate events (same date, title, and type)
-            existing_events = await get_events_by_date(date)
+            existing_events = await get_events_by_date(date_str)
             if any(
                 e.get("event_type") == event_type.value and e.get("title", "").strip().lower() == title.strip().lower()
                 for e in existing_events
             ):
-                await interaction.followup.send(
-                    f"❌ {event_type.value.title()} '{title}' on {date} already exists.",
-                    ephemeral=True
-                )
+                duplicate_msg = format_message(MessageType.ERROR, 'duplicate_event',
+                                             event_type=event_type.value.title(), 
+                                             title=title, date=date_str)
+                await interaction.followup.send(duplicate_msg, ephemeral=True)
                 return
             
-            await self._add_event(interaction, date.strip(), title.strip(), event_type, feedback_only)
+            await self._add_event(interaction, date_str, title, event_type, feedback_only)
             
         except Exception as e:
             logger.error(f"Error parsing event string: {e}")
@@ -371,8 +486,8 @@ class AdminCommands(commands.Cog):
                     "❌ An error occurred while parsing the event string.",
                     ephemeral=True
                 )
-            except:
-                pass
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
     
     async def _add_event(
         self,
@@ -413,23 +528,15 @@ class AdminCommands(commands.Cog):
                 title=title,
                 date=date,
                 event_type=event_type,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
                 feedback_only=feedback_only,
             )
             
             # Save event
             await add_event(event.to_dict())
             
-            embed = discord.Embed(
-                title=f"✅ {event_type.value.title()} Added",
-                color=0x00ff00
-            )
-            embed.add_field(name="📅 Date", value=date, inline=True)
-            embed.add_field(name="📝 Title", value=title, inline=True)
-            embed.add_field(name="🏷️ Type", value=event_type.value.replace("_", " ").title(), inline=True)
-            if feedback_only:
-                embed.add_field(name="⚙️ Mode", value="Feedback only", inline=False)
-            embed.set_footer(text=f"Event ID: {event.id}")
+            # Create embed using the new utility
+            embed = create_event_embed(event, show_details=True)
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -442,8 +549,8 @@ class AdminCommands(commands.Cog):
                     "❌ An error occurred while adding the event.",
                     ephemeral=True
                 )
-            except:
-                pass
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
     
     @app_commands.command(name="listlectures", description="List lectures for a date")
     @app_commands.describe(date="Date in YYYY-MM-DD format")
@@ -468,6 +575,12 @@ class AdminCommands(commands.Cog):
     async def list_evening_activities(self, interaction: discord.Interaction, date: str):
         """List evening activities for a specific date."""
         await self._list_events(interaction, date, EventType.EVENING_ACTIVITY)
+    
+    @app_commands.command(name="listcontesteditorials", description="List contest editorials for a date")
+    @app_commands.describe(date="Date in YYYY-MM-DD format")
+    async def list_contest_editorials(self, interaction: discord.Interaction, date: str):
+        """List contest editorials for a specific date."""
+        await self._list_events(interaction, date, EventType.CONTEST_EDITORIAL)
     
     async def _list_events(self, interaction: discord.Interaction, date: str, event_type: EventType):
         """Helper method to list events."""
@@ -555,6 +668,15 @@ class AdminCommands(commands.Cog):
         """Edit an existing evening activity event."""
         await self._edit_event(interaction, event_id, date_title, EventType.EVENING_ACTIVITY)
     
+    @app_commands.command(name="editcontesteditorial", description="Edit a contest editorial")
+    @app_commands.describe(
+        event_id="Event ID to edit",
+        date_title="Format: YYYY-MM-DD;Title"
+    )
+    async def edit_contest_editorial(self, interaction: discord.Interaction, event_id: str, date_title: str):
+        """Edit an existing contest editorial event."""
+        await self._edit_event(interaction, event_id, date_title, EventType.CONTEST_EDITORIAL)
+    
     async def _edit_event(self, interaction: discord.Interaction, event_id: str, date_title: str, event_type: EventType):
         """Helper method to edit events."""
         try:
@@ -640,6 +762,12 @@ class AdminCommands(commands.Cog):
     async def delete_evening_activity(self, interaction: discord.Interaction, event_id: str):
         """Delete an evening activity by its ID."""
         await self._delete_event(interaction, event_id, "evening activity")
+    
+    @app_commands.command(name="deletecontesteditorial", description="Delete a contest editorial by ID")
+    @app_commands.describe(event_id="The contest editorial ID to delete")
+    async def delete_contest_editorial(self, interaction: discord.Interaction, event_id: str):
+        """Delete a contest editorial by its ID."""
+        await self._delete_event(interaction, event_id, "contest editorial")
     
     async def _delete_event(self, interaction: discord.Interaction, event_id: str, event_name: str):
         """Helper method to delete events."""

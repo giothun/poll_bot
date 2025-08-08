@@ -3,9 +3,12 @@ Time utilities for CampPoll bot.
 Provides timezone-aware date/time operations.
 """
 
+import logging
 from datetime import datetime, timedelta, time, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 def tz_now(timezone: str = "Europe/Helsinki") -> datetime:
     """Get current time in specified timezone."""
@@ -116,7 +119,8 @@ def is_valid_timezone(tz_name: str) -> bool:
     try:
         ZoneInfo(tz_name)
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Invalid timezone '{tz_name}': {e}")
         return False
 
 def format_datetime(dt: datetime, include_timezone: bool = True) -> str:
@@ -225,3 +229,39 @@ def get_discord_timestamp(date_str: str, time_str: str, timezone: str, style: st
     
     timestamp = to_unix_timestamp(dt)
     return f"<t:{timestamp}:{style}>"
+
+
+def get_poll_closing_date(
+    poll_date: str, publish_time: str, close_time: str, timezone: str = "Europe/Helsinki"
+) -> str:
+    """
+    Determine closing date based on publish and close times.
+    
+    Args:
+        poll_date: Date when poll was published (YYYY-MM-DD)
+        publish_time: Time when polls are published (HH:MM)
+        close_time: Time when polls close (HH:MM)
+        timezone: Timezone name
+    
+    Returns:
+        Date when poll should close (YYYY-MM-DD)
+    """
+    try:
+        publish_parts = parse_time(publish_time)
+        close_parts = parse_time(close_time)
+        if not publish_parts or not close_parts:
+            return poll_date
+        
+        publish_minutes = publish_parts[0] * 60 + publish_parts[1]
+        close_minutes = close_parts[0] * 60 + close_parts[1]
+        
+        # If close time is earlier than publish time, poll closes next day
+        if close_minutes < publish_minutes:
+            from datetime import datetime, timedelta
+            poll_date_obj = datetime.strptime(poll_date, "%Y-%m-%d").date()
+            return (poll_date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        return poll_date
+    except Exception as e:
+        logger.warning(f"Error calculating poll closing date: {e}")
+        return poll_date

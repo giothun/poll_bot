@@ -48,11 +48,21 @@ async def load(filename: str, default: Any = None) -> Any:
                 return default
             
             # Read file asynchronously
-            loop = asyncio.get_event_loop()
-            content = await loop.run_in_executor(None, file_path.read_text, 'utf-8')
-            return json.loads(content)
+            content = await asyncio.to_thread(file_path.read_text, 'utf-8')
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                # Backup corrupt file
+                backup_path = file_path.with_suffix('.json.bak')
+                try:
+                    await asyncio.to_thread(backup_path.write_text, content, 'utf-8')
+                    backup_note = f" Backed up to {backup_path}."
+                except Exception:
+                    backup_note = " Backup failed."
+                print(f"Error decoding JSON in {file_path}: {e}.{backup_note}")
+                return default
             
-        except (json.JSONDecodeError, OSError) as e:
+        except OSError as e:
             print(f"Error loading {file_path}: {e}")
             return default
 
@@ -87,8 +97,7 @@ async def save(filename: str, data: Any) -> bool:
                 tmp_path.write_text(json_str, encoding="utf-8")
                 os.replace(tmp_path, file_path)
 
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _atomic_write)
+            await asyncio.to_thread(_atomic_write)
             return True
             
         except (TypeError, OSError) as e:

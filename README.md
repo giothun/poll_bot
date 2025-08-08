@@ -4,7 +4,7 @@ A Discord bot for automated daily attendance polls in educational camp environme
 
 ## ✨ Features
 
-- **Daily Attendance Polls**: Publishes tomorrow-attendance poll at 15:00
+- **Daily Attendance Polls**: Publishes tomorrow-attendance poll at 14:30
 - **Automatic Feedback Polls**: When attendance poll closes, bot posts separate feedback polls with emoji-options per event
 - **Feedback-Only Mode**: Mark an event as `feedback_only` to skip attendance poll entirely and publish only feedback
 - **Smart Reminders**: Single DM at 19:00 to users who haven't voted (feedback polls are excluded)
@@ -29,7 +29,7 @@ A Discord bot for automated daily attendance polls in educational camp environme
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd camp_poll
+   cd poll_bot
    ```
 
 2. **Configure environment**
@@ -85,8 +85,9 @@ A Discord bot for automated daily attendance polls in educational camp environme
 /setTimezone Europe/Helsinki
 
 # 2. Configure daily schedule
-/setPollTimes 15:00;09:00;19:00
+/setPollTimes 14:30;09:00;19:00
 # Format: publish_time;close_time;reminder_time (24-hour HH:MM)
+# Note: Feedback polls publish at 22:00 by default
 ```
 
 ## 📋 Commands
@@ -133,9 +134,10 @@ If `feedback_only:true` the bot *skips* attendance poll for that event day and i
 
 | Time | Action | Description |
 |------|--------|-------------|
-| **15:00** | 📢 **Publish** | Attendance poll for tomorrow's *non-feedback* Lectures & Contests |
+| **14:30** | 📢 **Publish** | Attendance poll for tomorrow's *non-feedback* Lectures & Contests |
 | **19:00** | 📧 **Remind** | One DM to students who haven't voted |
 | **09:00** next day | 📊 **Close** | Close poll; post summary & CSV in #organisers |
+| **22:00** | 📝 **Feedback** | Publish feedback polls for today's events |
 
 ## 📊 Poll Format
 
@@ -222,13 +224,26 @@ pytest tests/ -v
 ## 📦 Dependencies
 
 ```
-discord.py==2.4.0
+discord.py==2.5.2
 APScheduler==3.10.4
+python-dotenv==1.0.0
 pandas==2.1.4
 pytest==7.4.3
+pytest-asyncio==0.21.1
 ruff==0.1.6
 black==23.11.0
 ```
+
+## 🔐 Gateway Intents
+
+Enable these in both code and the Discord Developer Portal (Bot → Privileged Gateway Intents):
+- Polls
+- Message Content
+- Server Members (required for reminders and name export)
+
+## 🧪 Test Commands
+
+Set `ENABLE_TEST_COMMANDS=1` in the environment to load extra test commands from `cmds/test_commands.py` (disabled by default in production).
 
 ## 🚨 Admin Checklist
 
@@ -238,6 +253,76 @@ black==23.11.0
 | 19:00 | — | Bot sends reminders automatically |
 | 09:05 next day | Review summary & CSV | Check #organisers |
 | Any time | Close poll early / export | `/endPoll`, `/exportAttendance` |
+
+## 🇨🇾 Cyprus Camp Mode
+
+Special mode for Cyprus camps with feedback-only polls and single-choice responses.
+
+### Setup
+```bash
+# Switch to Cyprus mode (one command setup)
+/setcampmode cyprus
+```
+
+### Cyprus Features
+
+- **23:00 Cyprus Time**: Daily feedback polls for today's events
+- **Single Choice**: Each user can select only one response 
+- **No Attendance**: No attendance polls at 14:30
+- **No Reminders**: No DM reminders at 19:00
+- **Feedback Only**: Focus on event quality feedback
+
+### Supported Event Types
+
+| Event Type | Feedback Options | Add Command |
+|------------|------------------|-------------|
+| **Contest** | 🩷 Loved it / 😿 Too hard / 🥱 Too easy | `/addContest` |
+| **Contest Editorial** | 😻 Super useful / 🆗 Haven't got everything / 😑 Could be better / 🏃‍♀️‍➡️ Didn't attend | `/addContestEditorial` |
+| **Extra Lecture** | 🤩 Informative / 👍 Interesting / 😞 Could be better / 🛑 Didn't participate | `/addExtraLecture` |
+| **Evening Activity** | ❤️‍🔥 Want more / 😃 Fun / 😕 Could do better / 🙈 Didn't participate | `/addEveningActivity` |
+
+### Cyprus Commands
+
+**Add Events**:
+```bash
+/addContest 2024-06-12;Graph Algorithms Contest
+/addContestEditorial 2024-06-12;Contest A Editorial
+/addExtraLecture 2024-06-13;Advanced Data Structures
+/addEveningActivity 2024-06-13;Board Game Night
+```
+
+**List Events**:
+```bash
+/listContests 2024-06-12
+/listContestEditorials 2024-06-12
+/listExtraLectures 2024-06-13
+/listEveningActivities 2024-06-13
+```
+
+**Edit Events**:
+```bash
+/editContest event_123 2024-06-12;Updated Contest Title
+/editContestEditorial event_124 2024-06-12;Updated Editorial
+```
+
+**Delete Events**:
+```bash
+/deleteContest event_123
+/deleteContestEditorial event_124
+```
+
+### Cyprus Daily Timeline (Europe/Nicosia)
+
+| Time | Action | Description |
+|------|--------|-------------|
+| **23:00** | 📝 **Feedback** | Daily feedback polls for today's events |
+| **00:01** | 🔄 **Continue** | Polls remain active for 24 hours |
+
+### Switch Back to Standard Mode
+
+```bash
+/setcampmode standard
+```
 
 ## 🔍 Why No Database?
 

@@ -9,12 +9,9 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from models import Event, EventType, PollMeta, PollOption, GuildSettings
-from services.poll_manager import (
-    publish_attendance_poll, 
-    publish_feedback_polls,
-    chunk_events,
-    create_feedback_poll
-)
+from utils.time import get_poll_closing_date
+from services.polls.attendance import publish_attendance_poll, chunk_events  
+from services.polls.feedback import publish_feedback_polls, create_feedback_poll
 from utils.time import tz_today, tz_tomorrow
 
 
@@ -48,8 +45,8 @@ class TestAttendancePollLogic:
     """Test attendance poll creation and logic."""
     
     @pytest.mark.asyncio
-    @patch('services.poll_manager.get_events_by_date')
-    @patch('services.poll_manager.save_poll')
+    @patch('services.polls.attendance.get_events_by_date')
+    @patch('services.polls.attendance.save_poll')
     async def test_publish_attendance_poll_for_tomorrow(self, mock_save, mock_get_events):
         """Test that attendance polls are created for tomorrow's events."""
         # Mock tomorrow's events as dictionaries (as returned by storage)
@@ -102,7 +99,7 @@ class TestAttendancePollLogic:
         assert len(polls[0].options) == 2  # Two pollable events
     
     @pytest.mark.asyncio
-    @patch('services.poll_manager.get_events_by_date')
+    @patch('services.polls.attendance.get_events_by_date')
     async def test_no_events_tomorrow(self, mock_get_events):
         """Test handling when there are no events tomorrow."""
         mock_get_events.return_value = []
@@ -141,8 +138,8 @@ class TestFeedbackPollLogic:
     """Test feedback poll creation and logic."""
     
     @pytest.mark.asyncio
-    @patch('services.poll_manager.get_events_by_date')
-    @patch('services.poll_manager.create_feedback_poll')
+    @patch('services.polls.feedback.get_events_by_date')
+    @patch('services.polls.feedback.create_feedback_poll')
     async def test_publish_feedback_polls_for_today(self, mock_create_feedback, mock_get_events):
         """Test that feedback polls are created for today's events."""
         # Mock today's events as dictionaries (as returned by storage)
@@ -193,7 +190,7 @@ class TestFeedbackPollLogic:
         assert mock_create_feedback.call_count == 2
     
     @pytest.mark.asyncio
-    @patch('services.poll_manager.get_events_by_date')
+    @patch('services.polls.feedback.get_events_by_date')
     async def test_no_events_today_for_feedback(self, mock_get_events):
         """Test handling when there are no events today for feedback."""
         mock_get_events.return_value = []
@@ -209,7 +206,7 @@ class TestFeedbackPollLogic:
         mock_get_events.assert_called_once_with(tz_today("Europe/Helsinki"))
     
     @pytest.mark.asyncio
-    @patch('services.poll_manager.save_poll')
+    @patch('services.polls.feedback.save_poll')
     async def test_create_feedback_poll_structure(self, mock_save):
         """Test the structure of created feedback polls."""
         mock_guild = MagicMock()
@@ -285,8 +282,8 @@ class TestPollClosingLogic:
     """Test poll closing logic and timing."""
     
     @pytest.mark.asyncio
-    @patch('services.poll_manager.load_polls')
-    @patch('services.poll_manager.close_poll')
+    @patch('services.polls.closing.load_polls')
+    @patch('services.polls.closing.close_poll')
     async def test_close_only_todays_attendance_polls(self, mock_close_poll, mock_load_polls):
         """Test that only today's attendance polls are closed based on smart timing logic."""
         from datetime import datetime, timezone
@@ -349,7 +346,7 @@ class TestPollClosingLogic:
         }
         
         # Call function
-        from services.poll_manager import close_all_active_polls
+        from services.polls.closing import close_all_active_polls
         closed_count = await close_all_active_polls(mock_bot, mock_guild, guild_settings)
         
         # Should close 1 poll: only feedback poll (attendance poll closes next day with 14:30→09:00)
@@ -363,8 +360,8 @@ class TestPollClosingLogic:
         assert "poll2" not in closed_poll_ids  # Tomorrow's poll should NOT be closed
 
     @pytest.mark.asyncio
-    @patch('services.poll_manager.load_polls')
-    @patch('services.poll_manager.close_poll')
+    @patch('services.polls.closing.load_polls')
+    @patch('services.polls.closing.close_poll')
     async def test_smart_closing_same_day(self, mock_close_poll, mock_load_polls):
         """Test smart closing logic when close_time >= publish_time (same day closing)."""
         from datetime import datetime, timezone
@@ -401,7 +398,7 @@ class TestPollClosingLogic:
         }
         
         # Call function
-        from services.poll_manager import close_all_active_polls
+        from services.polls.closing import close_all_active_polls
         closed_count = await close_all_active_polls(mock_bot, mock_guild, guild_settings)
         
         # Should close 1 poll: today's attendance poll (18:00 >= 15:00 = same day)
@@ -417,7 +414,7 @@ class TestErrorHandling:
     """Test error handling in poll manager."""
     
     @pytest.mark.asyncio
-    @patch('services.poll_manager.get_events_by_date')
+    @patch('services.polls.attendance.get_events_by_date')
     async def test_storage_error_handling(self, mock_get_events):
         """Test handling of storage errors."""
         mock_get_events.side_effect = Exception("Storage error")
@@ -441,7 +438,7 @@ class TestErrorHandling:
         # No poll_channel_id in settings
         guild_settings = {"timezone": "Europe/Helsinki"}
         
-        with patch('services.poll_manager.get_events_by_date') as mock_get_events:
+        with patch('storage.get_events_by_date') as mock_get_events:
             mock_get_events.return_value = [
                 {
                     'id': 'event1',

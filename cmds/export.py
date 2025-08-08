@@ -122,8 +122,17 @@ class ExportCommands(commands.Cog):
                 )
                 return
             
-            # Create CSV
-            csv_data = await create_attendance_csv(target_poll)
+            # Build optional user_id -> display_name map for readability
+            members_map = {}
+            try:
+                for m in interaction.guild.members:
+                    if not m.bot:
+                        members_map[m.id] = m.display_name
+            except Exception:
+                members_map = {}
+
+            # Create CSV with optional member names
+            csv_data = await create_attendance_csv(target_poll, members_map or None)
             
             if not csv_data:
                 await interaction.followup.send(

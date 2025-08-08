@@ -12,6 +12,7 @@ class EventType(Enum):
     """Types of events that can be scheduled."""
     LECTURE = "lecture"
     CONTEST = "contest"
+    CONTEST_EDITORIAL = "contest_editorial"  # Contest editorial sessions
     EXTRA_LECTURE = "extra"  # Stored but not polled
     EVENING_ACTIVITY = "evening"  # Stored but not polled
 
@@ -69,6 +70,7 @@ class PollOption:
     title: str
     event_type: EventType
     votes: List[int] = field(default_factory=list)  # User IDs who voted
+    answer_id: Optional[str] = None  # Discord poll answer id
     
     @property
     def vote_count(self) -> int:
@@ -134,6 +136,24 @@ class PollMeta:
             if option.event_id == event_id:
                 return option.add_vote(user_id)
         return False
+
+    def record_vote_by_answer_id(self, user_id: int, answer_id: str) -> bool:
+        """Record a vote by Discord answer_id. Removes existing vote first."""
+        # Remove any existing vote
+        for option in self.options:
+            option.remove_vote(user_id)
+        # Add to matching option by answer_id
+        for option in self.options:
+            if option.answer_id == answer_id:
+                return option.add_vote(user_id)
+        return False
+
+    def remove_vote_by_answer_id(self, user_id: int, answer_id: str) -> bool:
+        """Remove a vote for the option with the given answer_id."""
+        for option in self.options:
+            if option.answer_id == answer_id:
+                return option.remove_vote(user_id)
+        return False
     
     def get_non_voters(self, all_member_ids: List[int]) -> List[int]:
         """Get list of member IDs who haven't voted."""
@@ -155,7 +175,8 @@ class PollMeta:
                     "event_id": opt.event_id,
                     "title": opt.title,
                     "event_type": opt.event_type.value,
-                    "votes": opt.votes
+                    "votes": opt.votes,
+                    "answer_id": opt.answer_id
                 }
                 for opt in self.options
             ],
@@ -173,7 +194,8 @@ class PollMeta:
                 event_id=opt["event_id"],
                 title=opt["title"],
                 event_type=EventType(opt["event_type"]),
-                votes=opt["votes"]
+                votes=opt["votes"],
+                answer_id=opt.get("answer_id")
             )
             for opt in data["options"]
         ]
@@ -203,6 +225,8 @@ class GuildSettings:
     poll_channel_id: Optional[int] = None
     organiser_channel_id: Optional[int] = None
     alerts_channel_id: Optional[int] = None
+    student_role_id: Optional[int] = None
+    organiser_role_id: Optional[int] = None
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
@@ -215,7 +239,9 @@ class GuildSettings:
             "feedback_publish_time": self.feedback_publish_time,
             "poll_channel_id": self.poll_channel_id,
             "organiser_channel_id": self.organiser_channel_id,
-            "alerts_channel_id": self.alerts_channel_id
+            "alerts_channel_id": self.alerts_channel_id,
+            "student_role_id": self.student_role_id,
+            "organiser_role_id": self.organiser_role_id
         }
     
     @classmethod

@@ -9,7 +9,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 from models import Event, EventType, PollMeta, PollOption
-from services.poll_manager import chunk_events
+from services.polls.attendance import chunk_events
 from services.csv_service import validate_csv_data
 from utils.time import parse_time, is_valid_timezone, tz_tomorrow
 from storage import add_event, get_events_by_date
