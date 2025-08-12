@@ -861,16 +861,7 @@ class AdminCommands(commands.Cog):
             created_events = []
             
             for event_data in test_events:
-                # Check for duplicates
-                existing_events = await get_events_by_date(tomorrow_date)
-                if any(
-                    e.get("event_type") == event_data["event_type"].value and 
-                    e.get("title", "").strip().lower() == event_data["title"].strip().lower()
-                    for e in existing_events
-                ):
-                    continue
-                
-                # Create event
+                # Create event (no duplicate check for test events)
                 event = Event(
                     id=str(uuid.uuid4()),
                     title=event_data["title"],
@@ -883,13 +874,6 @@ class AdminCommands(commands.Cog):
                 await add_event(event.to_dict())
                 created_events.append(event)
                 logger.info(f"Created test event: {event.title} for {tomorrow_date}")
-            
-            if not created_events:
-                await interaction.followup.send(
-                    f"❌ Test events for {tomorrow_date} already exist.",
-                    ephemeral=True
-                )
-                return
             
             # Send initial confirmation
             initial_embed = EmbedBuilder("⏳ Test Poll Setup")
@@ -1103,16 +1087,7 @@ class AdminCommands(commands.Cog):
             created_events = []
             
             for event_data in test_events:
-                # Check for duplicates
-                existing_events = await get_events_by_date(tomorrow_date)
-                if any(
-                    e.get("event_type") == event_data["event_type"].value and 
-                    e.get("title", "").strip().lower() == event_data["title"].strip().lower()
-                    for e in existing_events
-                ):
-                    continue
-                
-                # Create event
+                # Create event (no duplicate check for test events)
                 event = Event(
                     id=str(uuid.uuid4()),
                     title=event_data["title"],
@@ -1125,13 +1100,6 @@ class AdminCommands(commands.Cog):
                 await add_event(event.to_dict())
                 created_events.append(event)
                 logger.info(f"Created quick test event: {event.title} for {tomorrow_date}")
-            
-            if not created_events:
-                await interaction.followup.send(
-                    f"❌ Quick test events for {tomorrow_date} already exist.",
-                    ephemeral=True
-                )
-                return
             
             # Publish attendance poll immediately
             published_polls = await publish_attendance_poll(
