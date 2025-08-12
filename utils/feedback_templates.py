@@ -81,9 +81,8 @@ def is_cyprus_supported_event(event_type: EventType) -> bool:
 CYPRUS_CAMP_CONFIG = {
     "timezone": "Europe/Nicosia",  # UTC+3
     "feedback_time": "23:00",
-    "reminder_time": "19:00",
     "attendance_polls_enabled": False,
-    "reminders_enabled": True,     # Напоминания ВКЛЮЧЕНЫ
+    "reminders_enabled": False,
     "feedback_polls_enabled": True,
     "poll_close_enabled": False,  # Feedback polls не закрываются автоматически
     "single_choice_polls": True,  # Только один ответ разрешён
