@@ -53,9 +53,10 @@ class AdminCommands(commands.Cog):
         # Check for Organisers role (by name or configured ID)
         guild_settings = await get_guild_settings(interaction.guild_id)
         configured_role_id = (guild_settings or {}).get("organiser_role_id") if guild_settings else None
+        configured_role_name = (guild_settings or {}).get("organiser_role_name", "organisers") if guild_settings else "organisers"
         organiser_role = next(
             (r for r in user.roles 
-             if r.name.lower() == "organisers" or (configured_role_id and r.id == configured_role_id)), None
+             if r.name.lower() == configured_role_name.lower() or (configured_role_id and r.id == configured_role_id)), None
         )
         if organiser_role:
             return True
@@ -80,9 +81,10 @@ class AdminCommands(commands.Cog):
         # Check for Organisers role (by name or configured ID)
         guild_settings = await get_guild_settings(ctx.guild.id)
         configured_role_id = (guild_settings or {}).get("organiser_role_id") if guild_settings else None
+        configured_role_name = (guild_settings or {}).get("organiser_role_name", "organisers") if guild_settings else "organisers"
         organiser_role = next(
             (r for r in ctx.author.roles 
-             if r.name.lower() == "organisers" or (configured_role_id and r.id == configured_role_id)), None
+             if r.name.lower() == configured_role_name.lower() or (configured_role_id and r.id == configured_role_id)), None
         )
         return organiser_role is not None
     
@@ -236,6 +238,193 @@ class AdminCommands(commands.Cog):
             logger.error(f"Error setting organiser_role_id: {e}")
             try:
                 await interaction.followup.send("❌ Failed to set organiser_role_id.", ephemeral=True)
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="setstudentrolename", description="Set the student role name for reminders")
+    @app_commands.describe(role_name="Name of the student role (e.g., 'student', 'participants', 'members')")
+    async def set_student_role_name(self, interaction: discord.Interaction, role_name: str):
+        """Set the student role name for this server."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Validate role name
+            role_name = role_name.strip().lower()
+            if not role_name or len(role_name) > 50:
+                await interaction.followup.send(
+                    "❌ Role name must be between 1 and 50 characters.",
+                    ephemeral=True
+                )
+                return
+            
+            # Check if role exists on the server
+            role_exists = any(role.name.lower() == role_name for role in interaction.guild.roles)
+            if not role_exists:
+                await interaction.followup.send(
+                    f"⚠️ Warning: No role named '{role_name}' found on this server. Make sure the role name is correct.",
+                    ephemeral=True
+                )
+            
+            # Get or create guild settings
+            settings = await get_guild_settings(interaction.guild_id)
+            if not settings:
+                settings = GuildSettings(guild_id=interaction.guild_id).to_dict()
+            
+            settings["student_role_name"] = role_name
+            await save_guild_setting(settings)
+            
+            # Create response embed
+            embed = EmbedBuilder("✅ Student Role Name Updated")
+            embed.add_field("🎓 Role Name", f"`{role_name}`", inline=True)
+            if role_exists:
+                embed.add_field("✅ Status", "Role found on server", inline=True)
+            else:
+                embed.add_field("⚠️ Status", "Role not found on server", inline=True)
+            embed.add_field("ℹ️ Note", "This role will be used for sending poll reminders", inline=False)
+            
+            await interaction.followup.send(embed=embed.build(), ephemeral=True)
+            logger.info(f"Student role name set to '{role_name}' for guild {interaction.guild_id}")
+            
+        except Exception as e:
+            logger.error(f"Error setting student role name: {e}")
+            try:
+                await interaction.followup.send(
+                    "❌ An error occurred while setting the student role name.",
+                    ephemeral=True
+                )
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="setorganiserrolename", description="Set the organiser role name for admin permissions")
+    @app_commands.describe(role_name="Name of the organiser role (e.g., 'organisers', 'admins', 'staff')")
+    async def set_organiser_role_name(self, interaction: discord.Interaction, role_name: str):
+        """Set the organiser role name for this server."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Validate role name
+            role_name = role_name.strip().lower()
+            if not role_name or len(role_name) > 50:
+                await interaction.followup.send(
+                    "❌ Role name must be between 1 and 50 characters.",
+                    ephemeral=True
+                )
+                return
+            
+            # Check if role exists on the server
+            role_exists = any(role.name.lower() == role_name for role in interaction.guild.roles)
+            if not role_exists:
+                await interaction.followup.send(
+                    f"⚠️ Warning: No role named '{role_name}' found on this server. Make sure the role name is correct.",
+                    ephemeral=True
+                )
+            
+            # Get or create guild settings
+            settings = await get_guild_settings(interaction.guild_id)
+            if not settings:
+                settings = GuildSettings(guild_id=interaction.guild_id).to_dict()
+            
+            settings["organiser_role_name"] = role_name
+            await save_guild_setting(settings)
+            
+            # Create response embed
+            embed = EmbedBuilder("✅ Organiser Role Name Updated")
+            embed.add_field("👑 Role Name", f"`{role_name}`", inline=True)
+            if role_exists:
+                embed.add_field("✅ Status", "Role found on server", inline=True)
+            else:
+                embed.add_field("⚠️ Status", "Role not found on server", inline=True)
+            embed.add_field("ℹ️ Note", "This role will have admin permissions for the bot", inline=False)
+            
+            await interaction.followup.send(embed=embed.build(), ephemeral=True)
+            logger.info(f"Organiser role name set to '{role_name}' for guild {interaction.guild_id}")
+            
+        except Exception as e:
+            logger.error(f"Error setting organiser role name: {e}")
+            try:
+                await interaction.followup.send(
+                    "❌ An error occurred while setting the organiser role name.",
+                    ephemeral=True
+                )
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="showrolesettings", description="Show current role settings for this server")
+    async def show_role_settings(self, interaction: discord.Interaction):
+        """Show current role settings for this server."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Get guild settings
+            settings = await get_guild_settings(interaction.guild_id)
+            if not settings:
+                await interaction.followup.send(
+                    "❌ No settings found for this server. Please configure the bot first.",
+                    ephemeral=True
+                )
+                return
+            
+            # Get role information
+            student_role_name = settings.get("student_role_name", "student")
+            organiser_role_name = settings.get("organiser_role_name", "organisers")
+            student_role_id = settings.get("student_role_id")
+            organiser_role_id = settings.get("organiser_role_id")
+            
+            # Find actual roles on server
+            student_role_by_name = next(
+                (r for r in interaction.guild.roles if r.name.lower() == student_role_name.lower()), None
+            )
+            organiser_role_by_name = next(
+                (r for r in interaction.guild.roles if r.name.lower() == organiser_role_name.lower()), None
+            )
+            student_role_by_id = interaction.guild.get_role(student_role_id) if student_role_id else None
+            organiser_role_by_id = interaction.guild.get_role(organiser_role_id) if organiser_role_id else None
+            
+            # Create response embed
+            embed = EmbedBuilder("🎭 Role Settings")
+            
+            # Student role section
+            student_status = "✅ Found" if student_role_by_name else "❌ Not found"
+            student_info = f"Name: `{student_role_name}`\nStatus: {student_status}"
+            if student_role_by_name:
+                student_info += f"\nMembers: {len(student_role_by_name.members)}"
+            embed.add_field("🎓 Student Role", student_info, inline=True)
+            
+            # Organiser role section
+            organiser_status = "✅ Found" if organiser_role_by_name else "❌ Not found"
+            organiser_info = f"Name: `{organiser_role_name}`\nStatus: {organiser_status}"
+            if organiser_role_by_name:
+                organiser_info += f"\nMembers: {len(organiser_role_by_name.members)}"
+            embed.add_field("👑 Organiser Role", organiser_info, inline=True)
+            
+            # Add ID-based role info if configured
+            if student_role_id or organiser_role_id:
+                id_info = ""
+                if student_role_id:
+                    id_status = "✅ Found" if student_role_by_id else "❌ Not found"
+                    id_info += f"Student ID: `{student_role_id}` ({id_status})\n"
+                if organiser_role_id:
+                    id_status = "✅ Found" if organiser_role_by_id else "❌ Not found"
+                    id_info += f"Organiser ID: `{organiser_role_id}` ({id_status})"
+                embed.add_field("🆔 Role IDs", id_info.strip(), inline=False)
+            
+            embed.add_field(
+                "ℹ️ How it works",
+                "• Bot checks roles by **name first**, then by ID\n"
+                "• Student role is used for sending poll reminders\n"
+                "• Organiser role grants admin permissions for bot commands",
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=embed.build(), ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error showing role settings: {e}")
+            try:
+                await interaction.followup.send(
+                    "❌ An error occurred while retrieving role settings.",
+                    ephemeral=True
+                )
             except discord.HTTPException as e:
                 logger.warning(f"Failed to send error response: {e}")
     

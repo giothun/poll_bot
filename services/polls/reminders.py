@@ -43,8 +43,11 @@ async def send_reminders(
             logger.warning(f"Invalid student_role_id '{role_id_value}' in guild {guild.id}: {e}")
             student_role_id = 0
 
+        # Get configured student role name
+        configured_student_role_name = guild_settings.get("student_role_name", "student")
+        
         student_role = next(
-            (r for r in guild.roles if r.name.lower() == "student" or (student_role_id and r.id == student_role_id)),
+            (r for r in guild.roles if r.name.lower() == configured_student_role_name.lower() or (student_role_id and r.id == student_role_id)),
             None,
         )
         if not student_role:

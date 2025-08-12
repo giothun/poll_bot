@@ -227,6 +227,8 @@ class GuildSettings:
     alerts_channel_id: Optional[int] = None
     student_role_id: Optional[int] = None
     organiser_role_id: Optional[int] = None
+    student_role_name: str = "student"
+    organiser_role_name: str = "organisers"
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
@@ -241,7 +243,9 @@ class GuildSettings:
             "organiser_channel_id": self.organiser_channel_id,
             "alerts_channel_id": self.alerts_channel_id,
             "student_role_id": self.student_role_id,
-            "organiser_role_id": self.organiser_role_id
+            "organiser_role_id": self.organiser_role_id,
+            "student_role_name": self.student_role_name,
+            "organiser_role_name": self.organiser_role_name
         }
     
     @classmethod
