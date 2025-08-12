@@ -99,7 +99,9 @@ class SchedulerService:
             f"poll_publish_{guild_id}",
             f"poll_reminder_{guild_id}",
             f"poll_close_{guild_id}",
-            f"feedback_publish_{guild_id}"
+            f"feedback_publish_{guild_id}",
+            f"cyprus_feedback_{guild_id}",
+            f"cyprus_reminder_{guild_id}"
         ]
         
         for job_id in job_ids_to_remove:
@@ -115,9 +117,9 @@ class SchedulerService:
         # Parse times with validation
         times = {}
         if camp_mode == "cyprus":
-            # Cyprus mode: only feedback polls at 23:00
-            time_keys = ["feedback_publish_time"]
-            defaults = ["23:00"]
+            # Cyprus mode: feedback polls and reminders
+            time_keys = ["feedback_publish_time", "reminder_time"]
+            defaults = ["23:00", "19:00"]
         else:
             # Standard mode: all polls
             time_keys = ["poll_publish_time", "reminder_time", "poll_close_time", "feedback_publish_time"]
@@ -134,7 +136,9 @@ class SchedulerService:
         job_configs = []
         
         if camp_mode == "cyprus":
-            # Cyprus mode: only feedback polls
+            # Cyprus mode: feedback polls and reminders
+            
+            # Cyprus feedback publish job
             job_configs.append({
                 'func': self._run_cyprus_feedback_publish,
                 'args': [guild_id],
@@ -145,6 +149,23 @@ class SchedulerService:
                 ),
                 'id': f"cyprus_feedback_{guild_id}",
                 'name': f"Cyprus Feedback - Guild {guild_id}",
+                'replace_existing': True,
+                'coalesce': True,
+                'max_instances': 1,
+                'misfire_grace_time': 300,
+            })
+            
+            # Cyprus reminder job
+            job_configs.append({
+                'func': self._run_poll_reminder,
+                'args': [guild_id],
+                'trigger': CronTrigger(
+                    hour=times["reminder_time"][0],
+                    minute=times["reminder_time"][1],
+                    timezone=ZoneInfo(timezone)
+                ),
+                'id': f"cyprus_reminder_{guild_id}",
+                'name': f"Cyprus Reminder - Guild {guild_id}",
                 'replace_existing': True,
                 'coalesce': True,
                 'max_instances': 1,

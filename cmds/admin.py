@@ -562,7 +562,10 @@ class AdminCommands(commands.Cog):
                 # Cyprus mode: configure defaults
                 guild_settings["timezone"] = "Europe/Nicosia"
                 guild_settings["feedback_publish_time"] = "23:00"
-                mode_description = "Cyprus Camp (feedback-only at 23:00 Cyprus time)"
+                # Set reminder time if not already configured
+                if "reminder_time" not in guild_settings:
+                    guild_settings["reminder_time"] = "19:00"
+                mode_description = "Cyprus Camp (feedback at 23:00, reminders at 19:00 Cyprus time)"
             else:
                 # Standard mode: keep existing settings or use defaults
                 if "timezone" not in guild_settings:
@@ -580,9 +583,10 @@ class AdminCommands(commands.Cog):
                     .add_field("📍 Description", mode_description, inline=False))
             
             if mode == "cyprus":
+                reminder_time = guild_settings.get("reminder_time", "19:00")
                 embed_builder.add_field(
                     "⏰ Schedule", 
-                    "• 23:00 Cyprus Time: Daily feedback polls\n• No attendance polls\n• No reminders", 
+                    f"• {reminder_time} Cyprus Time: Poll reminders\n• 23:00 Cyprus Time: Daily feedback polls\n• No attendance polls", 
                     inline=False
                 )
             

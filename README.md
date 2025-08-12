@@ -266,11 +266,12 @@ Special mode for Cyprus camps with feedback-only polls and single-choice respons
 
 ### Cyprus Features
 
+- **19:00 Cyprus Time**: DM reminders for active feedback polls
 - **23:00 Cyprus Time**: Daily feedback polls for today's events
 - **Single Choice**: Each user can select only one response 
 - **No Attendance**: No attendance polls at 14:30
-- **No Reminders**: No DM reminders at 19:00
-- **Feedback Only**: Focus on event quality feedback
+- **No Poll Closing**: Feedback polls remain active for 24 hours
+- **Feedback Focus**: Emphasis on event quality feedback
 
 ### Supported Event Types
 
@@ -315,6 +316,7 @@ Special mode for Cyprus camps with feedback-only polls and single-choice respons
 
 | Time | Action | Description |
 |------|--------|-------------|
+| **19:00** | 📨 **Reminders** | DM reminders sent to users who haven't voted |
 | **23:00** | 📝 **Feedback** | Daily feedback polls for today's events |
 | **00:01** | 🔄 **Continue** | Polls remain active for 24 hours |
 
