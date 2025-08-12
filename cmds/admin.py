@@ -801,13 +801,13 @@ class AdminCommands(commands.Cog):
 
     @app_commands.command(name="createtestpoll", description="Create a test poll to verify bot functionality")
     @app_commands.describe(
-        send_reminders="Send reminders immediately after creating the poll (default False)",
+        send_reminders_now="Send reminders immediately after creating the poll (default False)",
         create_feedback="Also create feedback polls (default False)"
     )
     async def create_test_poll(
         self, 
         interaction: discord.Interaction, 
-        send_reminders: bool = False,
+        send_reminders_now: bool = False,
         create_feedback: bool = False
     ):
         """Create a test poll with automatic events to verify bot functionality."""
@@ -950,7 +950,7 @@ class AdminCommands(commands.Cog):
             )
             
             # Send reminders if requested
-            if send_reminders:
+            if send_reminders_now:
                 try:
                     reminder_stats = await send_reminders(
                         self.bot, 
@@ -1043,13 +1043,13 @@ class AdminCommands(commands.Cog):
 
     @app_commands.command(name="quicktestpoll", description="Create a test poll immediately (no delay)")
     @app_commands.describe(
-        send_reminders="Send reminders immediately after creating the poll (default False)",
+        send_reminders_now="Send reminders immediately after creating the poll (default False)",
         create_feedback="Also create feedback polls (default False)"
     )
     async def quick_test_poll(
         self, 
         interaction: discord.Interaction, 
-        send_reminders: bool = False,
+        send_reminders_now: bool = False,
         create_feedback: bool = False
     ):
         """Create a test poll immediately without delay for quick testing."""
@@ -1164,7 +1164,7 @@ class AdminCommands(commands.Cog):
             )
             
             # Send reminders if requested
-            if send_reminders:
+            if send_reminders_now:
                 try:
                     reminder_stats = await send_reminders(
                         self.bot, 
