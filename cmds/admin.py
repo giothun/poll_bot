@@ -841,8 +841,8 @@ class AdminCommands(commands.Cog):
                 return
             
             # Get tomorrow's date
-            timezone = guild_settings.get("timezone", "Europe/Helsinki")
-            tomorrow_date = tz_tomorrow(timezone)
+            guild_timezone = guild_settings.get("timezone", "Europe/Helsinki")
+            tomorrow_date = tz_tomorrow(guild_timezone)
             
             # Create test events
             test_events = [
@@ -1083,8 +1083,8 @@ class AdminCommands(commands.Cog):
                 return
             
             # Get tomorrow's date
-            timezone = guild_settings.get("timezone", "Europe/Helsinki")
-            tomorrow_date = tz_tomorrow(timezone)
+            guild_timezone = guild_settings.get("timezone", "Europe/Helsinki")
+            tomorrow_date = tz_tomorrow(guild_timezone)
             
             # Create test events
             test_events = [
