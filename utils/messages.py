@@ -477,3 +477,4 @@ def create_progress_bar(current: int, total: int, length: int = 20) -> str:
     percentage = (current / total) * 100
     
     return f"{bar} {current}/{total} ({percentage:.1f}%)"
+

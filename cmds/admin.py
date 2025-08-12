@@ -4,6 +4,7 @@ Handles event management and bot configuration.
 """
 
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 import discord
@@ -26,6 +27,8 @@ from utils.discord import (
     create_event_embed, safe_send_message, EmbedBuilder
 )
 from utils.messages import MessageType, format_message, format_event_display
+from services.poll_manager import publish_attendance_poll, send_reminders, publish_feedback_polls
+from utils.time import tz_tomorrow
 
 logger = logging.getLogger(__name__)
 
@@ -795,6 +798,435 @@ class AdminCommands(commands.Cog):
                 f"❌ An error occurred while deleting the {event_name}.",
                 ephemeral=True
             )
+
+    @app_commands.command(name="createtestpoll", description="Create a test poll to verify bot functionality")
+    @app_commands.describe(
+        send_reminders="Send reminders immediately after creating the poll (default False)",
+        create_feedback="Also create feedback polls (default False)"
+    )
+    async def create_test_poll(
+        self, 
+        interaction: discord.Interaction, 
+        send_reminders: bool = False,
+        create_feedback: bool = False
+    ):
+        """Create a test poll with automatic events to verify bot functionality."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Check guild settings
+            guild_settings = await get_guild_settings(interaction.guild_id)
+            if not guild_settings:
+                await interaction.followup.send(
+                    "❌ Server settings not found. Please configure the bot first using `/setchannels`.",
+                    ephemeral=True
+                )
+                return
+            
+            # Check if poll channel is configured
+            poll_channel_id = guild_settings.get("poll_channel_id")
+            if not poll_channel_id:
+                await interaction.followup.send(
+                    "❌ Poll channel not configured. Use `/setchannels` to set it up.",
+                    ephemeral=True
+                )
+                return
+            
+            poll_channel = interaction.guild.get_channel(poll_channel_id)
+            if not poll_channel:
+                await interaction.followup.send(
+                    f"❌ Poll channel #{poll_channel_id} not found.",
+                    ephemeral=True
+                )
+                return
+            
+            # Get tomorrow's date
+            timezone = guild_settings.get("timezone", "Europe/Helsinki")
+            tomorrow_date = tz_tomorrow(timezone)
+            
+            # Create test events
+            test_events = [
+                {
+                    "title": "🔬 Test Algorithms Lecture",
+                    "event_type": EventType.LECTURE,
+                    "feedback_only": False
+                },
+                {
+                    "title": "🏆 Test Contest",
+                    "event_type": EventType.CONTEST,
+                    "feedback_only": False
+                }
+            ]
+            
+            created_events = []
+            
+            for event_data in test_events:
+                # Check for duplicates
+                existing_events = await get_events_by_date(tomorrow_date)
+                if any(
+                    e.get("event_type") == event_data["event_type"].value and 
+                    e.get("title", "").strip().lower() == event_data["title"].strip().lower()
+                    for e in existing_events
+                ):
+                    continue
+                
+                # Create event
+                event = Event(
+                    id=str(uuid.uuid4()),
+                    title=event_data["title"],
+                    date=tomorrow_date,
+                    event_type=event_data["event_type"],
+                    created_at=datetime.now(timezone.utc),
+                    feedback_only=event_data["feedback_only"],
+                )
+                
+                await add_event(event.to_dict())
+                created_events.append(event)
+                logger.info(f"Created test event: {event.title} for {tomorrow_date}")
+            
+            if not created_events:
+                await interaction.followup.send(
+                    f"❌ Test events for {tomorrow_date} already exist.",
+                    ephemeral=True
+                )
+                return
+            
+            # Send initial confirmation
+            initial_embed = EmbedBuilder("⏳ Test Poll Setup")
+            initial_embed.add_field(
+                "📅 Event Date", 
+                tomorrow_date, 
+                inline=True
+            )
+            initial_embed.add_field(
+                "🎯 Events Created", 
+                "\n".join([f"• {event.title}" for event in created_events]), 
+                inline=False
+            )
+            initial_embed.add_field(
+                "📍 Channel", 
+                poll_channel.mention, 
+                inline=True
+            )
+            initial_embed.add_field(
+                "⏰ Status", 
+                "Events created successfully. Poll will be published in 1 minute...", 
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=initial_embed.build(), ephemeral=True)
+            
+            # Wait 1 minute before publishing the poll
+            await asyncio.sleep(60)
+            
+            # Publish attendance poll
+            published_polls = await publish_attendance_poll(
+                self.bot, 
+                interaction.guild, 
+                guild_settings
+            )
+            
+            # Create final results embed
+            final_embed = EmbedBuilder("✅ Test Poll Created")
+            final_embed.add_field(
+                "📅 Event Date", 
+                tomorrow_date, 
+                inline=True
+            )
+            final_embed.add_field(
+                "📊 Polls Published", 
+                str(len(published_polls)) if published_polls else "0", 
+                inline=True
+            )
+            final_embed.add_field(
+                "🎯 Events", 
+                "\n".join([f"• {event.title}" for event in created_events]), 
+                inline=False
+            )
+            final_embed.add_field(
+                "📍 Channel", 
+                poll_channel.mention, 
+                inline=True
+            )
+            
+            # Send reminders if requested
+            if send_reminders:
+                try:
+                    reminder_stats = await send_reminders(
+                        self.bot, 
+                        interaction.guild, 
+                        guild_settings
+                    )
+                    final_embed.add_field(
+                        "📨 Reminders", 
+                        f"Sent: {reminder_stats.get('sent', 0)}\nFailed: {reminder_stats.get('failed', 0)}", 
+                        inline=True
+                    )
+                except Exception as e:
+                    logger.error(f"Error sending test reminders: {e}")
+                    final_embed.add_field(
+                        "⚠️ Reminders", 
+                        "Error sending", 
+                        inline=True
+                    )
+            
+            # Create feedback polls if requested
+            if create_feedback:
+                try:
+                    feedback_polls = await publish_feedback_polls(
+                        self.bot, 
+                        interaction.guild, 
+                        guild_settings
+                    )
+                    final_embed.add_field(
+                        "💬 Feedback Polls", 
+                        f"Created: {len(feedback_polls) if feedback_polls else 0}", 
+                        inline=True
+                    )
+                except Exception as e:
+                    logger.error(f"Error creating test feedback polls: {e}")
+                    final_embed.add_field(
+                        "⚠️ Feedback", 
+                        "Error creating", 
+                        inline=True
+                    )
+            
+            final_embed.add_field(
+                "ℹ️ Note", 
+                "This is a test poll to verify bot functionality. Events are created for tomorrow.", 
+                inline=False
+            )
+            
+            # Send updated results via edit (use a new message since we can't edit across long delays)
+            try:
+                await interaction.user.send(embed=final_embed.build())
+            except discord.Forbidden:
+                # If DM fails, send to channel (this might be visible to others)
+                await poll_channel.send(f"{interaction.user.mention} Your test poll results:", embed=final_embed.build())
+            
+            # Send notification to poll channel
+            notification_embed = discord.Embed(
+                title="🧪 Test Poll Created",
+                description=f"Administrator {interaction.user.mention} created a test poll to verify bot functionality.",
+                color=0x007bff
+            )
+            notification_embed.add_field(
+                name="📅 Events for", 
+                value=tomorrow_date, 
+                inline=True
+            )
+            notification_embed.add_field(
+                name="🎯 Number of Events", 
+                value=str(len(created_events)), 
+                inline=True
+            )
+            
+            try:
+                await poll_channel.send(embed=notification_embed)
+            except Exception as e:
+                logger.warning(f"Could not send notification to poll channel: {e}")
+            
+            logger.info(
+                f"Test poll created by {interaction.user.id} in guild {interaction.guild_id}: "
+                f"{len(created_events)} events, {len(published_polls) if published_polls else 0} polls"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating test poll: {e}")
+            try:
+                await interaction.followup.send(
+                    "❌ An error occurred while creating the test poll.",
+                    ephemeral=True
+                )
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="quicktestpoll", description="Create a test poll immediately (no delay)")
+    @app_commands.describe(
+        send_reminders="Send reminders immediately after creating the poll (default False)",
+        create_feedback="Also create feedback polls (default False)"
+    )
+    async def quick_test_poll(
+        self, 
+        interaction: discord.Interaction, 
+        send_reminders: bool = False,
+        create_feedback: bool = False
+    ):
+        """Create a test poll immediately without delay for quick testing."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Check guild settings
+            guild_settings = await get_guild_settings(interaction.guild_id)
+            if not guild_settings:
+                await interaction.followup.send(
+                    "❌ Server settings not found. Please configure the bot first using `/setchannels`.",
+                    ephemeral=True
+                )
+                return
+            
+            # Check if poll channel is configured
+            poll_channel_id = guild_settings.get("poll_channel_id")
+            if not poll_channel_id:
+                await interaction.followup.send(
+                    "❌ Poll channel not configured. Use `/setchannels` to set it up.",
+                    ephemeral=True
+                )
+                return
+            
+            poll_channel = interaction.guild.get_channel(poll_channel_id)
+            if not poll_channel:
+                await interaction.followup.send(
+                    f"❌ Poll channel #{poll_channel_id} not found.",
+                    ephemeral=True
+                )
+                return
+            
+            # Get tomorrow's date
+            timezone = guild_settings.get("timezone", "Europe/Helsinki")
+            tomorrow_date = tz_tomorrow(timezone)
+            
+            # Create test events
+            test_events = [
+                {
+                    "title": "⚡ Quick Test Lecture",
+                    "event_type": EventType.LECTURE,
+                    "feedback_only": False
+                },
+                {
+                    "title": "⚡ Quick Test Contest",
+                    "event_type": EventType.CONTEST,
+                    "feedback_only": False
+                }
+            ]
+            
+            created_events = []
+            
+            for event_data in test_events:
+                # Check for duplicates
+                existing_events = await get_events_by_date(tomorrow_date)
+                if any(
+                    e.get("event_type") == event_data["event_type"].value and 
+                    e.get("title", "").strip().lower() == event_data["title"].strip().lower()
+                    for e in existing_events
+                ):
+                    continue
+                
+                # Create event
+                event = Event(
+                    id=str(uuid.uuid4()),
+                    title=event_data["title"],
+                    date=tomorrow_date,
+                    event_type=event_data["event_type"],
+                    created_at=datetime.now(timezone.utc),
+                    feedback_only=event_data["feedback_only"],
+                )
+                
+                await add_event(event.to_dict())
+                created_events.append(event)
+                logger.info(f"Created quick test event: {event.title} for {tomorrow_date}")
+            
+            if not created_events:
+                await interaction.followup.send(
+                    f"❌ Quick test events for {tomorrow_date} already exist.",
+                    ephemeral=True
+                )
+                return
+            
+            # Publish attendance poll immediately
+            published_polls = await publish_attendance_poll(
+                self.bot, 
+                interaction.guild, 
+                guild_settings
+            )
+            
+            # Create results embed
+            embed = EmbedBuilder("⚡ Quick Test Poll Created")
+            embed.add_field(
+                "📅 Event Date", 
+                tomorrow_date, 
+                inline=True
+            )
+            embed.add_field(
+                "📊 Polls Published", 
+                str(len(published_polls)) if published_polls else "0", 
+                inline=True
+            )
+            embed.add_field(
+                "🎯 Events", 
+                "\n".join([f"• {event.title}" for event in created_events]), 
+                inline=False
+            )
+            embed.add_field(
+                "📍 Channel", 
+                poll_channel.mention, 
+                inline=True
+            )
+            
+            # Send reminders if requested
+            if send_reminders:
+                try:
+                    reminder_stats = await send_reminders(
+                        self.bot, 
+                        interaction.guild, 
+                        guild_settings
+                    )
+                    embed.add_field(
+                        "📨 Reminders", 
+                        f"Sent: {reminder_stats.get('sent', 0)}\nFailed: {reminder_stats.get('failed', 0)}", 
+                        inline=True
+                    )
+                except Exception as e:
+                    logger.error(f"Error sending quick test reminders: {e}")
+                    embed.add_field(
+                        "⚠️ Reminders", 
+                        "Error sending", 
+                        inline=True
+                    )
+            
+            # Create feedback polls if requested
+            if create_feedback:
+                try:
+                    feedback_polls = await publish_feedback_polls(
+                        self.bot, 
+                        interaction.guild, 
+                        guild_settings
+                    )
+                    embed.add_field(
+                        "💬 Feedback Polls", 
+                        f"Created: {len(feedback_polls) if feedback_polls else 0}", 
+                        inline=True
+                    )
+                except Exception as e:
+                    logger.error(f"Error creating quick test feedback polls: {e}")
+                    embed.add_field(
+                        "⚠️ Feedback", 
+                        "Error creating", 
+                        inline=True
+                    )
+            
+            embed.add_field(
+                "ℹ️ Note", 
+                "This is a quick test poll for immediate verification of bot functionality.", 
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=embed.build(), ephemeral=True)
+            
+            logger.info(
+                f"Quick test poll created by {interaction.user.id} in guild {interaction.guild_id}: "
+                f"{len(created_events)} events, {len(published_polls) if published_polls else 0} polls"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating quick test poll: {e}")
+            try:
+                await interaction.followup.send(
+                    "❌ An error occurred while creating the quick test poll.",
+                    ephemeral=True
+                )
+            except discord.HTTPException as e:
+                logger.warning(f"Failed to send error response: {e}")
 
 async def setup(bot: commands.Bot):
     """Setup function for the cog."""

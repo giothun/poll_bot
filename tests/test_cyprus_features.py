@@ -342,3 +342,4 @@ class TestCyprusSchedulerIntegration:
         assert "poll_publish_12345" in job_ids
         assert "poll_reminder_12345" in job_ids
         assert "feedback_publish_12345" in job_ids
+

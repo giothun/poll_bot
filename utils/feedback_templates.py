@@ -92,3 +92,4 @@ CYPRUS_CAMP_CONFIG = {
 def get_cyprus_config() -> Dict[str, any]:
     """Получить конфигурацию Cyprus кэмпа."""
     return CYPRUS_CAMP_CONFIG.copy()
+
