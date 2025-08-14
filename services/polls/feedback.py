@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import discord  # type: ignore
 
 from models import Event, EventType, PollMeta, PollOption
-from storage import get_events_by_date, save_poll
+from storage import get_events_by_date, save_poll, get_polls_by_guild
 from utils.time import tz_today
 
 logger = logging.getLogger(__name__)
@@ -61,14 +61,37 @@ async def publish_feedback_polls(
             )
             return []
 
+        # Build a set of event_ids that already have active feedback polls for today
+        existing_feedback_event_ids: set[str] = set()
+        try:
+            existing_polls = await get_polls_by_guild(guild.id)
+            for poll in existing_polls:
+                if (
+                    poll.get("is_feedback", False)
+                    and poll.get("poll_date") == today_date
+                    and poll.get("closed_at") is None
+                ):
+                    for opt in poll.get("options", []) or []:
+                        ev_id = opt.get("event_id")
+                        if ev_id:
+                            existing_feedback_event_ids.add(ev_id)
+        except Exception:
+            # If storage lookup fails, proceed without dedupe
+            pass
+
         created_polls: List[PollMeta] = []
         for event in pollable_events:
+            if event.id in existing_feedback_event_ids:
+                logger.info(
+                    f"Feedback poll for event {event.id} already exists; skipping"
+                )
+                continue
             event_option = PollOption(
                 event_id=event.id,
                 title=f"{event.event_type.value.title()}: {event.title}",
                 event_type=event.event_type,
             )
-            feedback_poll = await create_feedback_poll(guild, event_option, guild_settings)
+            feedback_poll = await create_feedback_poll(guild, event_option, guild_settings, today_date)
             if feedback_poll:
                 created_polls.append(feedback_poll)
                 logger.info(
@@ -86,6 +109,7 @@ async def create_feedback_poll(
     guild: discord.Guild,
     event_option: PollOption,
     guild_settings: Dict[str, Any],
+    poll_date: str,
 ) -> Optional[PollMeta]:
     try:
         poll_channel_id = guild_settings.get("poll_channel_id")
@@ -133,7 +157,7 @@ async def create_feedback_poll(
             guild_id=guild.id,
             channel_id=poll_channel.id,
             message_id=message.id,
-            poll_date=event_option.event_id,  # related event id for reference
+            poll_date=poll_date,  # Используем реальную дату
             options=poll_options_meta,
             is_feedback=True,
         )

@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 import discord  # type: ignore
 
 from models import Event, PollMeta, PollOption
-from storage import get_events_by_date, save_poll
+from storage import get_events_by_date, save_poll, get_polls_by_guild
 from utils.time import tz_tomorrow
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,23 @@ async def publish_attendance_poll(
                 f"No pollable events for {tomorrow_date} in guild {guild.id}"
             )
             return []
+
+        # Deduplicate: if there are already active attendance polls for this date, skip
+        try:
+            existing_polls = await get_polls_by_guild(guild.id)
+            if any(
+                (not poll.get("is_feedback", False))
+                and poll.get("poll_date") == tomorrow_date
+                and poll.get("closed_at") is None
+                for poll in existing_polls
+            ):
+                logger.info(
+                    f"Attendance poll(s) for {tomorrow_date} already exist in guild {guild.id}; skipping publish"
+                )
+                return []
+        except Exception:
+            # If storage lookup fails, proceed to avoid blocking publish entirely
+            pass
 
         poll_channel_id = guild_settings.get("poll_channel_id")
         if not poll_channel_id:

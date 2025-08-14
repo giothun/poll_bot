@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 import discord
 
 from models import Event, EventType, PollMeta, PollOption
-from storage import get_events_by_date, save_poll
+from storage import get_events_by_date, save_poll, get_polls_by_guild
 from utils.feedback_templates import get_cyprus_feedback_options, is_cyprus_supported_event
 from utils.time import tz_today
 
@@ -62,16 +62,36 @@ async def publish_cyprus_feedback_polls(
             logger.error(f"Poll channel {poll_channel_id} not found in guild {guild.id}")
             return []
         
+        # Deduplicate per-event: avoid duplicate feedback polls for the same event/date
+        existing_feedback_event_ids: set[str] = set()
+        try:
+            existing_polls = await get_polls_by_guild(guild.id)
+            for poll in existing_polls:
+                if (
+                    poll.get("is_feedback", False)
+                    and poll.get("poll_date") == today_date
+                    and poll.get("closed_at") is None
+                ):
+                    for opt in poll.get("options", []) or []:
+                        ev_id = opt.get("event_id")
+                        if ev_id:
+                            existing_feedback_event_ids.add(ev_id)
+        except Exception:
+            pass
+
         created_polls: List[PollMeta] = []
         
         # Создаём отдельный опрос для каждого события
         for event in supported_events:
+            if event.id in existing_feedback_event_ids:
+                logger.info(f"Cyprus feedback poll for event {event.id} already exists; skipping")
+                continue
             poll_meta = await create_cyprus_feedback_poll(
                 guild, event, guild_settings, poll_channel
             )
             if poll_meta:
                 created_polls.append(poll_meta)
-                await save_poll(poll_meta.id, poll_meta.to_dict())
+                await save_poll(poll_meta.to_dict())
         
         logger.info(f"Created {len(created_polls)} Cyprus feedback polls for guild {guild.id}")
         return created_polls
@@ -100,6 +120,17 @@ async def create_cyprus_feedback_poll(
         PollMeta object or None if failed
     """
     try:
+        # Check bot permissions in the target channel
+        try:
+            bot_permissions = poll_channel.permissions_for(guild.me)
+            if not getattr(bot_permissions, "send_messages", False):
+                logger.error(
+                    f"No permission to send messages in feedback channel {poll_channel.id}"
+                )
+                return None
+        except Exception:
+            # If permission check fails for any reason, proceed to avoid blocking in tests
+            pass
         # Получаем Cyprus шаблон для этого типа события
         feedback_options = get_cyprus_feedback_options(event.event_type)
         if not feedback_options:
@@ -135,13 +166,23 @@ async def create_cyprus_feedback_poll(
         # Отправляем опрос в канал
         message = await poll_channel.send(poll=poll)
         
+        # Try to map Discord answer IDs to our options by matching text
+        try:
+            poll_obj = getattr(message, "poll", None)
+            answers = getattr(poll_obj, "answers", []) or []
+            answer_ids_by_text = {getattr(a, "text", None): str(getattr(a, "id", "")) for a in answers}
+            for opt in poll_options:
+                opt.answer_id = answer_ids_by_text.get(opt.title)
+        except Exception as e:
+            logger.debug(f"Could not map answer IDs for Cyprus feedback poll: {e}")
+
         # Создаём метаданные опроса
         poll_meta = PollMeta(
             id=f"cyprus_feedback_{event.id}_{int(datetime.now().timestamp())}",
             guild_id=guild.id,
             channel_id=poll_channel.id,
             message_id=message.id,
-            poll_date=event.id,  # Для feedback используем event.id
+            poll_date=event.date,  # Используем реальную дату события
             options=poll_options,
             is_feedback=True
         )
@@ -194,9 +235,12 @@ async def get_cyprus_feedback_results(poll_meta: PollMeta, guild: discord.Guild)
             return None
         
         poll = message.poll
+        # Use the event_id from the first option (all options refer to the same event)
+        derived_event_id = poll_meta.options[0].event_id if poll_meta.options else None
+
         results = {
             "poll_id": poll_meta.id,
-            "event_id": poll_meta.poll_date,
+            "event_id": derived_event_id,
             "total_votes": poll.total_votes,
             "answers": []
         }

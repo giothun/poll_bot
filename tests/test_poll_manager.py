@@ -229,7 +229,7 @@ class TestFeedbackPollLogic:
         )
         
         # Call function
-        poll = await create_feedback_poll(mock_guild, event_option, guild_settings)
+        poll = await create_feedback_poll(mock_guild, event_option, guild_settings, "2024-12-25")
         
         # Verify poll structure
         assert poll is not None
@@ -318,11 +318,11 @@ class TestPollClosingLogic:
                 "is_feedback": False
             },
             "poll3": {
-                "id": "poll3",
+                "id": "poll3", 
                 "guild_id": 12345,
                 "channel_id": 67890,
                 "message_id": 33333,
-                "poll_date": "feedback-event-id",  # Feedback poll - should be closed
+                "poll_date": today,  # Feedback poll for today - should be closed next day
                 "options": [],
                 "published_at": datetime.now(timezone.utc).isoformat(),
                 "closed_at": None,
@@ -349,15 +349,11 @@ class TestPollClosingLogic:
         from services.polls.closing import close_all_active_polls
         closed_count = await close_all_active_polls(mock_bot, mock_guild, guild_settings)
         
-        # Should close 1 poll: only feedback poll (attendance poll closes next day with 14:30→09:00)
-        assert closed_count == 1
-        assert mock_close_poll.call_count == 1
-        
-        # Verify which polls were closed
-        closed_poll_ids = [call[0][2].id for call in mock_close_poll.call_args_list]
-        assert "poll3" in closed_poll_ids  # Feedback poll
-        assert "poll1" not in closed_poll_ids  # Today's attendance poll closes tomorrow (09:00 < 14:30)
-        assert "poll2" not in closed_poll_ids  # Tomorrow's poll should NOT be closed
+        # Теперь feedback опросы закрываются на следующий день после события, 
+        # а attendance опросы также закрываются на следующий день (14:30→09:00)
+        # Поэтому сегодня не должно быть закрытых опросов
+        assert closed_count == 0
+        # С новой логикой feedback опросы не закрываются в тот же день
 
     @pytest.mark.asyncio
     @patch('services.polls.closing.load_polls')

@@ -138,10 +138,12 @@ class PollMeta:
         return False
 
     def record_vote_by_answer_id(self, user_id: int, answer_id: str) -> bool:
-        """Record a vote by Discord answer_id. Removes existing vote first."""
-        # Remove any existing vote
-        for option in self.options:
-            option.remove_vote(user_id)
+        """Record a vote by Discord answer_id. For attendance polls, allows multiple votes."""
+        # For feedback polls (single choice), remove existing votes
+        if self.is_feedback:
+            for option in self.options:
+                option.remove_vote(user_id)
+        
         # Add to matching option by answer_id
         for option in self.options:
             if option.answer_id == answer_id:

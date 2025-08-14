@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 import discord  # type: ignore
 
 from models import PollMeta
-from storage import load_polls, save_poll
+from storage import load_polls, save_poll, delete_poll
 from utils.time import tz_today, to_unix_timestamp, get_poll_closing_date
 from services.csv_service import create_attendance_csv
 
@@ -27,8 +27,11 @@ async def close_poll(
         try:
             poll_message = await poll_channel.fetch_message(poll_meta.message_id)
             if not poll_message or not poll_message.poll:
+                # Orphan record: remove from storage
+                await delete_poll(poll_meta.id)
                 return False
         except discord.NotFound:
+            await delete_poll(poll_meta.id)
             return False
 
         try:
@@ -115,7 +118,13 @@ async def close_all_active_polls(
         for poll_meta in active_polls:
             should_close = False
             if poll_meta.is_feedback:
-                should_close = True
+                # Feedback опросы закрываются на следующий день после их даты
+                # Используем логику: если опрос создан сегодня, закрыть завтра (23:00 -> 00:01)
+                expected_close_date = get_poll_closing_date(
+                    poll_meta.poll_date, "23:00", "00:01", timezone
+                )
+                if expected_close_date == today_date:
+                    should_close = True
             else:
                 expected_close_date = get_poll_closing_date(
                     poll_meta.poll_date, publish_time, close_time, timezone

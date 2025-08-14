@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import discord  # type: ignore
 
 from models import PollMeta
-from storage import load_polls, save_poll
+from storage import load_polls, save_poll, delete_poll
 from utils.time import tz_today, get_discord_timestamp, get_poll_closing_date
 from utils.discord import create_reminder_embed
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 async def send_reminders(
-    bot: discord.Client, guild: discord.Guild, guild_settings: Dict[str, Any]
+    bot: discord.Client, guild: discord.Guild, guild_settings: Dict[str, Any], poll_ids: List[str] | None = None
 ) -> Dict[str, int]:
     try:
         logger.info(f"Sending poll reminders for guild {guild.id}")
@@ -30,9 +30,42 @@ async def send_reminders(
             if poll["guild_id"] == guild.id and poll["closed_at"] is None
         ]
 
+        # Optionally narrow to specific polls (e.g., newly created by a test command)
+        if poll_ids:
+            active_polls = [pm for pm in active_polls if pm.id in set(poll_ids)]
+
         if not active_polls:
             logger.info(f"No active polls for guild {guild.id}")
             return {"sent": 0, "failed": 0, "already_reminded": 0, "total_polls": 0}
+
+        # Clean up orphan polls whose Discord messages were deleted
+        cleaned_active_polls: List[PollMeta] = []
+        removed_orphans = 0
+        for pm in active_polls:
+            poll_channel = guild.get_channel(pm.channel_id)
+            if not poll_channel:
+                await delete_poll(pm.id)
+                removed_orphans += 1
+                continue
+            try:
+                msg = await poll_channel.fetch_message(pm.message_id)
+                if not msg or not getattr(msg, "poll", None):
+                    await delete_poll(pm.id)
+                    removed_orphans += 1
+                    continue
+            except discord.NotFound:
+                await delete_poll(pm.id)
+                removed_orphans += 1
+                continue
+            except Exception:
+                # If fetch fails for other reasons, skip cleanup and avoid blocking reminders entirely
+                pass
+            cleaned_active_polls.append(pm)
+
+        if removed_orphans:
+            logger.info(f"Removed {removed_orphans} orphan active poll(s) in guild {guild.id}")
+
+        active_polls = cleaned_active_polls
 
         # resolve student role
         student_role_id = 0
@@ -52,7 +85,7 @@ async def send_reminders(
         )
         if not student_role:
             logger.warning(f"Student role not found in guild {guild.id}")
-            return {"sent": 0, "failed": 0, "already_reminded": 0}
+            return {"sent": 0, "failed": 0, "already_reminded": 0, "total_members": 0, "total_polls": len(active_polls)}
 
         members = [m for m in guild.members if not m.bot and student_role in m.roles]
 

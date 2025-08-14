@@ -6,11 +6,14 @@ Handles async JSON file operations with thread safety.
 import json
 import os
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from config import get_config
+
+logger = logging.getLogger(__name__)
 
 # Global lock for file operations to prevent race conditions
 _file_locks: Dict[str, asyncio.Lock] = {}
@@ -59,11 +62,11 @@ async def load(filename: str, default: Any = None) -> Any:
                     backup_note = f" Backed up to {backup_path}."
                 except Exception:
                     backup_note = " Backup failed."
-                print(f"Error decoding JSON in {file_path}: {e}.{backup_note}")
+                logger.error(f"Error decoding JSON in {file_path}: {e}.{backup_note}")
                 return default
             
         except OSError as e:
-            print(f"Error loading {file_path}: {e}")
+            logger.error(f"Error loading {file_path}: {e}")
             return default
 
 async def save(filename: str, data: Any) -> bool:
@@ -101,7 +104,7 @@ async def save(filename: str, data: Any) -> bool:
             return True
             
         except (TypeError, OSError) as e:
-            print(f"Error saving {file_path}: {e}")
+            logger.error(f"Error saving {file_path}: {e}")
             return False
 
 # Event storage functions

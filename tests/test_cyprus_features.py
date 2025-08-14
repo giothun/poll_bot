@@ -24,13 +24,17 @@ class TestCyprusFeedbackTemplates:
         """Test contest feedback options."""
         options = get_cyprus_feedback_options(EventType.CONTEST)
         
-        assert len(options) == 3
+        assert len(options) == 5
         assert options[0].emoji == "🩷"
         assert "loved it" in options[0].text
         assert options[1].emoji == "😿"
         assert "too hard" in options[1].text
         assert options[2].emoji == "🥱"
         assert "too easy" in options[2].text
+        assert options[3].emoji == "😑"
+        assert "OK" in options[3].text
+        assert options[4].emoji == "😕"
+        assert "didn’t like it" in options[4].text
     
     def test_contest_editorial_feedback_options(self):
         """Test contest editorial feedback options."""

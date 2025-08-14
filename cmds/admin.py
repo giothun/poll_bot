@@ -16,7 +16,8 @@ from models import Event, EventType, GuildSettings
 from storage import (
     add_event, get_events_by_date, get_events_by_type,
     update_event, delete_event, get_guild_settings,
-    save_guild_setting
+    save_guild_setting, load_polls, save_polls,
+    load_guild_settings, save_guild_settings, save_events
 )
 from utils.validation import (
     validate_timezone, validate_date_title_format, validate_poll_times_format,
@@ -189,6 +190,86 @@ class AdminCommands(commands.Cog):
                 )
             except discord.HTTPException as e:
                 logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="cleanuppolls", description="Remove orphan poll records for this server (messages deleted in Discord)")
+    async def cleanup_polls(self, interaction: discord.Interaction):
+        """Remove active poll records whose Discord messages no longer exist."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+
+            guild = interaction.guild
+            if not guild:
+                await interaction.followup.send("❌ This command can only be used in a server.", ephemeral=True)
+                return
+
+            polls = await load_polls()
+            checked = 0
+            removed = 0
+            fetch_errors = 0
+
+            # Work on a copy to allow deletion while iterating
+            for poll_id, p in list(polls.items()):
+                try:
+                    if p.get("guild_id") != guild.id:
+                        continue
+                    # Only consider active polls
+                    if p.get("closed_at") is not None:
+                        continue
+                    checked += 1
+
+                    channel = guild.get_channel(p.get("channel_id"))
+                    if not channel:
+                        del polls[poll_id]
+                        removed += 1
+                        continue
+
+                    try:
+                        msg = await channel.fetch_message(p.get("message_id"))
+                        if not msg or not getattr(msg, "poll", None):
+                            del polls[poll_id]
+                            removed += 1
+                            continue
+                    except discord.NotFound:
+                        del polls[poll_id]
+                        removed += 1
+                        continue
+                    except Exception:
+                        # Ignore transient fetch issues
+                        fetch_errors += 1
+                        await asyncio.sleep(0.1)
+                        continue
+
+                    # Be gentle to API
+                    await asyncio.sleep(0.05)
+
+                except Exception:
+                    fetch_errors += 1
+                    continue
+
+            await save_polls(polls)
+
+            embed = discord.Embed(
+                title="🧹 Poll Cleanup",
+                description="Removed orphan poll records for this server.",
+                color=0xFFA500
+            )
+            embed.add_field(name="🔍 Checked (active)", value=str(checked), inline=True)
+            embed.add_field(name="🗑️ Removed", value=str(removed), inline=True)
+            if fetch_errors:
+                embed.add_field(name="⚠️ Fetch Errors", value=str(fetch_errors), inline=True)
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+            logger.info(
+                f"Cleanup polls in guild {guild.id}: checked={checked}, removed={removed}, errors={fetch_errors}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error during cleanup_polls: {e}")
+            try:
+                await interaction.followup.send("❌ An error occurred during cleanup.", ephemeral=True)
+            except discord.HTTPException:
+                pass
 
     @app_commands.command(name="setstudentroleid", description="Set the Student role ID for reminders")
     @app_commands.describe(role_id="Numeric ID of the Student role")
@@ -1133,10 +1214,13 @@ class AdminCommands(commands.Cog):
             # Send reminders if requested
             if send_reminders_now:
                 try:
+                    # Target reminders to newly created polls only
+                    poll_ids = [p.id for p in (published_polls or [])]
                     reminder_stats = await send_reminders(
                         self.bot, 
                         interaction.guild, 
-                        guild_settings
+                        guild_settings,
+                        poll_ids=poll_ids if poll_ids else None
                     )
                     final_embed.add_field(
                         "📨 Reminders", 
@@ -1331,10 +1415,13 @@ class AdminCommands(commands.Cog):
             # Send reminders if requested
             if send_reminders_now:
                 try:
+                    # Target reminders to newly created polls only
+                    poll_ids = [p.id for p in (published_polls or [])]
                     reminder_stats = await send_reminders(
                         self.bot, 
                         interaction.guild, 
-                        guild_settings
+                        guild_settings,
+                        poll_ids=poll_ids if poll_ids else None
                     )
                     embed.add_field(
                         "📨 Reminders", 
@@ -1392,6 +1479,79 @@ class AdminCommands(commands.Cog):
                 )
             except discord.HTTPException as e:
                 logger.warning(f"Failed to send error response: {e}")
+
+    @app_commands.command(name="resetserverdata", description="Delete all polls and settings for this server (irreversible)")
+    @app_commands.describe(
+        confirm="Type 'CONFIRM' to proceed",
+        purge_events="Also purge ALL events (global across servers)"
+    )
+    async def reset_server_data(
+        self,
+        interaction: discord.Interaction,
+        confirm: str,
+        purge_events: bool = False
+    ):
+        """Remove all polls and settings for the current server. Optionally purge events (global)."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+
+            if confirm != "CONFIRM":
+                await interaction.followup.send(
+                    "❌ Confirmation failed. Please pass confirm='CONFIRM' to proceed.",
+                    ephemeral=True
+                )
+                return
+
+            guild_id = interaction.guild_id
+            if not guild_id:
+                await interaction.followup.send("❌ This command can only be used in a server.", ephemeral=True)
+                return
+
+            # Remove polls for this guild
+            polls = await load_polls()
+            before_count = len(polls)
+            polls = {pid: p for pid, p in polls.items() if p.get("guild_id") != guild_id}
+            removed_polls = before_count - len(polls)
+            await save_polls(polls)
+
+            # Remove guild settings for this guild
+            settings = await load_guild_settings()
+            removed_settings = 1 if str(guild_id) in settings else 0
+            settings.pop(str(guild_id), None)
+            await save_guild_settings(settings)
+
+            # Optionally purge all events (global!)
+            purged_events = False
+            if purge_events:
+                # Events are global across servers; this clears all
+                await save_events([])
+                purged_events = True
+
+            embed = discord.Embed(
+                title="🧹 Server Data Reset",
+                description="Completed data reset for this server.",
+                color=0xff0000
+            )
+            embed.add_field(name="🗳️ Polls Removed", value=str(removed_polls), inline=True)
+            embed.add_field(name="⚙️ Settings Removed", value=str(removed_settings), inline=True)
+            embed.add_field(name="📅 Events Purged", value="Yes" if purged_events else "No", inline=True)
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+            logger.warning(
+                f"Server data reset by {interaction.user.id} in guild {guild_id}: polls_removed={removed_polls}, "
+                f"settings_removed={removed_settings}, purge_events={purged_events}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error resetting server data: {e}")
+            try:
+                await interaction.followup.send(
+                    "❌ An error occurred while resetting server data.",
+                    ephemeral=True
+                )
+            except discord.HTTPException:
+                pass
 
 async def setup(bot: commands.Bot):
     """Setup function for the cog."""

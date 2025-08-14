@@ -25,7 +25,9 @@ CYPRUS_FEEDBACK_TEMPLATES: Dict[EventType, List[FeedbackOption]] = {
     EventType.CONTEST: [
         FeedbackOption("🩷", "Wow, I loved it!"),
         FeedbackOption("😿", "It was too hard"),
-        FeedbackOption("🥱", "It was too easy")
+        FeedbackOption("🥱", "It was too easy"),
+        FeedbackOption("😑", "It was OK"),
+        FeedbackOption("😕", "I didn’t like it"),
     ],
     
     EventType.CONTEST_EDITORIAL: [
