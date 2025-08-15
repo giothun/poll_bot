@@ -90,8 +90,8 @@ class TestAttendancePollLogic:
         # Call function
         polls = await publish_attendance_poll(mock_bot, mock_guild, guild_settings)
         
-        # Verify tomorrow's date was requested
-        mock_get_events.assert_called_once_with(tz_tomorrow("Europe/Helsinki"))
+        # Verify tomorrow's date was requested for this guild
+        mock_get_events.assert_called_once_with(tz_tomorrow("Europe/Helsinki"), guild_id=mock_guild.id)
         
         # Verify poll was created
         assert len(polls) == 1
@@ -112,7 +112,7 @@ class TestAttendancePollLogic:
         polls = await publish_attendance_poll(mock_bot, mock_guild, guild_settings)
         
         assert len(polls) == 0
-        mock_get_events.assert_called_once_with(tz_tomorrow("Europe/Helsinki"))
+        mock_get_events.assert_called_once_with(tz_tomorrow("Europe/Helsinki"), guild_id=mock_guild.id)
     
     def test_chunk_many_events(self):
         """Test chunking when there are many events."""
@@ -182,8 +182,8 @@ class TestFeedbackPollLogic:
         # Call function
         polls = await publish_feedback_polls(mock_bot, mock_guild, guild_settings)
         
-        # Verify today's date was requested
-        mock_get_events.assert_called_once_with(tz_today("Europe/Helsinki"))
+        # Verify today's date was requested for this guild
+        mock_get_events.assert_called_once_with(tz_today("Europe/Helsinki"), guild_id=mock_guild.id)
         
         # Verify feedback polls were created
         assert len(polls) == 2  # Two events = two feedback polls
@@ -203,7 +203,7 @@ class TestFeedbackPollLogic:
         polls = await publish_feedback_polls(mock_bot, mock_guild, guild_settings)
         
         assert len(polls) == 0
-        mock_get_events.assert_called_once_with(tz_today("Europe/Helsinki"))
+        mock_get_events.assert_called_once_with(tz_today("Europe/Helsinki"), guild_id=mock_guild.id)
     
     @pytest.mark.asyncio
     @patch('services.polls.feedback.save_poll')

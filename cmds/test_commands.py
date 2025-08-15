@@ -49,7 +49,7 @@ class TestCommands(commands.Cog):
             today = datetime.now().strftime("%Y-%m-%d")
             
             # Check if we already have events for today
-            existing_events = await get_events_by_date(today)
+            existing_events = await get_events_by_date(today, guild_id=interaction.guild_id)
             if existing_events:
                 # Use existing events
                 logger.info(f"Using {len(existing_events)} existing events for test poll")
@@ -60,13 +60,15 @@ class TestCommands(commands.Cog):
                         id=str(uuid.uuid4()),
                         title="Test Lecture",
                         date=today,
-                        event_type=EventType.LECTURE
+                        event_type=EventType.LECTURE,
+                        guild_id=interaction.guild_id,
                     ),
                     Event(
                         id=str(uuid.uuid4()),
                         title="Test Contest",
                         date=today,
-                        event_type=EventType.CONTEST
+                        event_type=EventType.CONTEST,
+                        guild_id=interaction.guild_id,
                     )
                 ]
                 
@@ -119,7 +121,7 @@ class TestCommands(commands.Cog):
             today = datetime.now().strftime("%Y-%m-%d")
             
             # Check if we already have events for today
-            existing_events = await get_events_by_date(today)
+            existing_events = await get_events_by_date(today, guild_id=interaction.guild_id)
             if existing_events:
                 # Use existing events
                 logger.info(f"Using {len(existing_events)} existing events for test feedback polls")
@@ -130,13 +132,15 @@ class TestCommands(commands.Cog):
                         id=str(uuid.uuid4()),
                         title="Test Lecture for Feedback",
                         date=today,
-                        event_type=EventType.LECTURE
+                        event_type=EventType.LECTURE,
+                        guild_id=interaction.guild_id,
                     ),
                     Event(
                         id=str(uuid.uuid4()),
                         title="Test Contest for Feedback",
                         date=today,
-                        event_type=EventType.CONTEST
+                        event_type=EventType.CONTEST,
+                        guild_id=interaction.guild_id,
                     )
                 ]
                 

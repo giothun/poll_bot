@@ -17,7 +17,7 @@ from storage import (
     add_event, get_events_by_date, get_events_by_type,
     update_event, delete_event, get_guild_settings,
     save_guild_setting, load_polls, save_polls,
-    load_guild_settings, save_guild_settings, save_events
+    load_guild_settings, save_guild_settings, save_events, load_events
 )
 from utils.validation import (
     validate_timezone, validate_date_title_format, validate_poll_times_format,
@@ -38,6 +38,47 @@ class AdminCommands(commands.Cog):
     
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+    
+    # Helpers
+    async def _get_poll_channel_or_error(self, interaction: discord.Interaction) -> Optional[discord.TextChannel]:
+        guild_settings = await get_guild_settings(interaction.guild_id)
+        if not guild_settings:
+            await interaction.followup.send(
+                "❌ Server settings not found. Please configure the bot first using `/setchannels`.",
+                ephemeral=True
+            )
+            return None
+        poll_channel_id = guild_settings.get("poll_channel_id")
+        if not poll_channel_id:
+            await interaction.followup.send(
+                "❌ Poll channel not configured. Use `/setchannels` to set it up.",
+                ephemeral=True
+            )
+            return None
+        poll_channel = interaction.guild.get_channel(poll_channel_id)
+        if not poll_channel:
+            await interaction.followup.send(
+                f"❌ Poll channel #{poll_channel_id} not found.",
+                ephemeral=True
+            )
+            return None
+        return poll_channel
+
+    async def _create_test_events(self, guild_id: int, date_str: str, titles_and_types: list[tuple[str, EventType]]) -> list[Event]:
+        created: list[Event] = []
+        for title, etype in titles_and_types:
+            event = Event(
+                id=str(uuid.uuid4()),
+                title=title,
+                date=date_str,
+                event_type=etype,
+                created_at=datetime.now(timezone.utc),
+                feedback_only=False,
+                guild_id=guild_id,
+            )
+            await add_event(event.to_dict())
+            created.append(event)
+        return created
     
     # Ensure that all application (slash) commands in this cog are restricted to server administrators or Organisers role
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -179,7 +220,7 @@ class AdminCommands(commands.Cog):
             )
             
             # Reload scheduler with new settings
-            await self.bot.setup_guild_jobs(interaction.guild_id, guild_settings)
+            await self.bot.scheduler_service.setup_guild_jobs(interaction.guild_id, guild_settings)
             
         except Exception as e:
             logger.error(f"Error setting channels: {e}")
@@ -548,7 +589,7 @@ class AdminCommands(commands.Cog):
             logger.info(f"Timezone set to {timezone} for guild {interaction.guild_id}")
             
             # Reload scheduler with new settings
-            await self.bot.setup_guild_jobs(interaction.guild_id, guild_settings)
+            await self.bot.scheduler_service.setup_guild_jobs(interaction.guild_id, guild_settings)
             
         except Exception as e:
             logger.error(f"Error setting timezone: {e}")
@@ -603,7 +644,7 @@ class AdminCommands(commands.Cog):
             logger.info(f"Poll times updated for guild {interaction.guild_id}: {times}")
             
             # Reload scheduler with new settings
-            await self.bot.setup_guild_jobs(interaction.guild_id, guild_settings)
+            await self.bot.scheduler_service.setup_guild_jobs(interaction.guild_id, guild_settings)
             
         except Exception as e:
             logger.error(f"Error setting poll times: {e}")
@@ -615,73 +656,7 @@ class AdminCommands(commands.Cog):
             except discord.HTTPException as e:
                 logger.warning(f"Failed to send error response: {e}")
     
-    @app_commands.command(name="setcampmode", description="Set camp operation mode")
-    @app_commands.describe(
-        mode="Mode: 'cyprus' for feedback-only at 23:00, 'standard' for full polls"
-    )
-    async def set_camp_mode(self, interaction: discord.Interaction, mode: str):
-        """Set the camp operation mode."""
-        try:
-            await interaction.response.defer(ephemeral=True)
-            
-            if mode.lower() not in ["cyprus", "standard"]:
-                await interaction.followup.send(
-                    "❌ Mode must be 'cyprus' or 'standard'", 
-                    ephemeral=True
-                )
-                return
-            
-            mode = mode.lower()
-            guild_settings = await get_guild_settings(interaction.guild_id)
-            if not guild_settings:
-                guild_settings = GuildSettings(guild_id=interaction.guild_id).to_dict()
-            
-            # Set camp mode
-            guild_settings["camp_mode"] = mode
-            
-            if mode == "cyprus":
-                # Cyprus mode: configure defaults
-                guild_settings["timezone"] = "Europe/Nicosia"
-                guild_settings["feedback_publish_time"] = "23:00"
-                mode_description = "Cyprus Camp (feedback-only at 23:00 Cyprus time)"
-            else:
-                # Standard mode: keep existing settings or use defaults
-                if "timezone" not in guild_settings:
-                    guild_settings["timezone"] = "Europe/Helsinki"
-                mode_description = "Standard Camp (full poll schedule)"
-            
-            await save_guild_setting(guild_settings)
-            
-            # Update scheduler with new mode
-            await self.bot.setup_guild_jobs(interaction.guild_id, guild_settings)
-            
-            # Create success embed
-            embed_builder = (EmbedBuilder("Camp Mode Updated")
-                    .add_field("🏕️ Mode", mode.title(), inline=True)
-                    .add_field("📍 Description", mode_description, inline=False))
-            
-            if mode == "cyprus":
-                embed_builder.add_field(
-                    "⏰ Schedule", 
-                    "• 23:00 Cyprus Time: Daily feedback polls\n• No attendance polls\n• No reminders", 
-                    inline=False
-                )
-            
-            embed = embed_builder.build()
-            
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            logger.info(f"Camp mode set to '{mode}' for guild {interaction.guild_id}")
-            
-        except Exception as e:
-            logger.error(f"Error setting camp mode: {e}")
-            try:
-                await interaction.followup.send(
-                    "❌ An error occurred while setting camp mode.",
-                    ephemeral=True
-                )
-            except discord.HTTPException as e:
-                logger.warning(f"Failed to send error response: {e}")
+    # setcampmode command removed (unified mode)
     
     @app_commands.command(name="addlecture", description="Add a new lecture")
     @app_commands.describe(
@@ -724,7 +699,7 @@ class AdminCommands(commands.Cog):
         date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
     )
     async def add_contest_editorial(self, interaction: discord.Interaction, date_title: str):
-        """Add a contest editorial event (Cyprus camp mode)."""
+        """Add a contest editorial event."""
         await self._add_event_from_string(interaction, date_title, EventType.CONTEST_EDITORIAL, feedback_only=True)
     
     async def _add_event_from_string(
@@ -749,8 +724,8 @@ class AdminCommands(commands.Cog):
             date, title = validation_result.cleaned_value
             date_str = date.strftime("%Y-%m-%d")
             
-            # Prevent duplicate events (same date, title, and type)
-            existing_events = await get_events_by_date(date_str)
+            # Prevent duplicate events (same date, title, and type) within this guild
+            existing_events = await get_events_by_date(date_str, guild_id=interaction.guild_id)
             if any(
                 e.get("event_type") == event_type.value and e.get("title", "").strip().lower() == title.strip().lower()
                 for e in existing_events
@@ -795,7 +770,7 @@ class AdminCommands(commands.Cog):
                 return
             
             # Prevent duplicate events (same date, title, and type)
-            existing_events = await get_events_by_date(date)
+            existing_events = await get_events_by_date(date, guild_id=interaction.guild_id)
             if any(
                 e.get("event_type") == event_type.value and e.get("title", "").strip().lower() == title.strip().lower()
                 for e in existing_events
@@ -814,6 +789,7 @@ class AdminCommands(commands.Cog):
                 event_type=event_type,
                 created_at=datetime.now(timezone.utc),
                 feedback_only=feedback_only,
+                guild_id=interaction.guild_id,
             )
             
             # Save event
@@ -880,8 +856,8 @@ class AdminCommands(commands.Cog):
                 )
                 return
             
-            # Get events
-            events_data = await get_events_by_type(event_type.value, date)
+            # Get events for this guild
+            events_data = await get_events_by_type(event_type.value, date, guild_id=interaction.guild_id)
             
             if not events_data:
                 await interaction.response.send_message(
@@ -987,13 +963,24 @@ class AdminCommands(commands.Cog):
                 )
                 return
             
+            # Preserve original guild_id and created_at if possible
+            existing_events = await load_events()
+            original = next((e for e in existing_events if e.get("id") == event_id), None)
+            original_created_at = None
+            if original:
+                try:
+                    original_created_at = datetime.fromisoformat(original.get("created_at"))
+                except Exception:
+                    original_created_at = None
+            
             # Create updated event
             updated_event = Event(
                 id=event_id,
                 title=title.strip(),
                 date=date.strip(),
                 event_type=event_type,
-                created_at=datetime.utcnow()  # Keep original creation time in real implementation
+                created_at=original_created_at or datetime.utcnow(),
+                guild_id=(original.get("guild_id") if original else interaction.guild_id)
             )
             
             # Update event
@@ -1092,66 +1079,21 @@ class AdminCommands(commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
             
-            # Check guild settings
-            guild_settings = await get_guild_settings(interaction.guild_id)
-            if not guild_settings:
-                await interaction.followup.send(
-                    "❌ Server settings not found. Please configure the bot first using `/setchannels`.",
-                    ephemeral=True
-                )
-                return
-            
-            # Check if poll channel is configured
-            poll_channel_id = guild_settings.get("poll_channel_id")
-            if not poll_channel_id:
-                await interaction.followup.send(
-                    "❌ Poll channel not configured. Use `/setchannels` to set it up.",
-                    ephemeral=True
-                )
-                return
-            
-            poll_channel = interaction.guild.get_channel(poll_channel_id)
+            poll_channel = await self._get_poll_channel_or_error(interaction)
             if not poll_channel:
-                await interaction.followup.send(
-                    f"❌ Poll channel #{poll_channel_id} not found.",
-                    ephemeral=True
-                )
                 return
+            guild_settings = await get_guild_settings(interaction.guild_id)
             
             # Get tomorrow's date
             guild_timezone = guild_settings.get("timezone", "Europe/Helsinki")
             tomorrow_date = tz_tomorrow(guild_timezone)
             
             # Create test events
-            test_events = [
-                {
-                    "title": "🔬 Test Algorithms Lecture",
-                    "event_type": EventType.LECTURE,
-                    "feedback_only": False
-                },
-                {
-                    "title": "🏆 Test Contest",
-                    "event_type": EventType.CONTEST,
-                    "feedback_only": False
-                }
-            ]
-            
-            created_events = []
-            
-            for event_data in test_events:
-                # Create event (no duplicate check for test events)
-                event = Event(
-                    id=str(uuid.uuid4()),
-                    title=event_data["title"],
-                    date=tomorrow_date,
-                    event_type=event_data["event_type"],
-                    created_at=datetime.now(timezone.utc),
-                    feedback_only=event_data["feedback_only"],
-                )
-                
-                await add_event(event.to_dict())
-                created_events.append(event)
-                logger.info(f"Created test event: {event.title} for {tomorrow_date}")
+            created_events = await self._create_test_events(
+                interaction.guild_id,
+                tomorrow_date,
+                [("🔬 Test Algorithms Lecture", EventType.LECTURE), ("🏆 Test Contest", EventType.CONTEST)],
+            )
             
             # Send initial confirmation
             initial_embed = EmbedBuilder("⏳ Test Poll Setup")
@@ -1321,66 +1263,21 @@ class AdminCommands(commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
             
-            # Check guild settings
-            guild_settings = await get_guild_settings(interaction.guild_id)
-            if not guild_settings:
-                await interaction.followup.send(
-                    "❌ Server settings not found. Please configure the bot first using `/setchannels`.",
-                    ephemeral=True
-                )
-                return
-            
-            # Check if poll channel is configured
-            poll_channel_id = guild_settings.get("poll_channel_id")
-            if not poll_channel_id:
-                await interaction.followup.send(
-                    "❌ Poll channel not configured. Use `/setchannels` to set it up.",
-                    ephemeral=True
-                )
-                return
-            
-            poll_channel = interaction.guild.get_channel(poll_channel_id)
+            poll_channel = await self._get_poll_channel_or_error(interaction)
             if not poll_channel:
-                await interaction.followup.send(
-                    f"❌ Poll channel #{poll_channel_id} not found.",
-                    ephemeral=True
-                )
                 return
+            guild_settings = await get_guild_settings(interaction.guild_id)
             
             # Get tomorrow's date
             guild_timezone = guild_settings.get("timezone", "Europe/Helsinki")
             tomorrow_date = tz_tomorrow(guild_timezone)
             
             # Create test events
-            test_events = [
-                {
-                    "title": "⚡ Quick Test Lecture",
-                    "event_type": EventType.LECTURE,
-                    "feedback_only": False
-                },
-                {
-                    "title": "⚡ Quick Test Contest",
-                    "event_type": EventType.CONTEST,
-                    "feedback_only": False
-                }
-            ]
-            
-            created_events = []
-            
-            for event_data in test_events:
-                # Create event (no duplicate check for test events)
-                event = Event(
-                    id=str(uuid.uuid4()),
-                    title=event_data["title"],
-                    date=tomorrow_date,
-                    event_type=event_data["event_type"],
-                    created_at=datetime.now(timezone.utc),
-                    feedback_only=event_data["feedback_only"],
-                )
-                
-                await add_event(event.to_dict())
-                created_events.append(event)
-                logger.info(f"Created quick test event: {event.title} for {tomorrow_date}")
+            created_events = await self._create_test_events(
+                interaction.guild_id,
+                tomorrow_date,
+                [("⚡ Quick Test Lecture", EventType.LECTURE), ("⚡ Quick Test Contest", EventType.CONTEST)],
+            )
             
             # Publish attendance poll immediately
             published_polls = await publish_attendance_poll(
@@ -1523,8 +1420,10 @@ class AdminCommands(commands.Cog):
             # Optionally purge all events (global!)
             purged_events = False
             if purge_events:
-                # Events are global across servers; this clears all
-                await save_events([])
+                # Filter out only events belonging to this guild
+                existing = await load_events()
+                remaining = [e for e in existing if e.get("guild_id") != guild_id]
+                await save_events(remaining)
                 purged_events = True
 
             embed = discord.Embed(

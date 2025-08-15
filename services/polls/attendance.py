@@ -11,6 +11,7 @@ import discord  # type: ignore
 from models import Event, PollMeta, PollOption
 from storage import get_events_by_date, save_poll, get_polls_by_guild
 from utils.time import tz_tomorrow
+from utils.discord import ensure_can_send
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,8 @@ async def publish_attendance_poll(
         timezone = guild_settings.get("timezone", "Europe/Helsinki")
         tomorrow_date = tz_tomorrow(timezone)
 
-        # Get tomorrow's events
-        events_data = await get_events_by_date(tomorrow_date)
+        # Get tomorrow's events for this guild
+        events_data = await get_events_by_date(tomorrow_date, guild_id=guild.id)
         events = [Event.from_dict(event) for event in events_data]
 
         # Filter pollable events
@@ -68,17 +69,9 @@ async def publish_attendance_poll(
             logger.error(f"No poll channel configured for guild {guild.id}")
             return []
 
-        poll_channel = guild.get_channel(poll_channel_id)
+        poll_channel = await ensure_can_send(guild, poll_channel_id)
         if not poll_channel:
-            logger.error(
-                f"Poll channel {poll_channel_id} not found in guild {guild.id}"
-            )
-            return []
-
-        # Check bot permissions
-        bot_permissions = poll_channel.permissions_for(guild.me)
-        if not bot_permissions.send_messages:
-            logger.error(f"No permission to send messages in channel {poll_channel_id}")
+            logger.error(f"Cannot send messages in poll channel {poll_channel_id} (missing or no perms)")
             return []
 
         event_chunks = chunk_events(pollable_events, max_size=10)

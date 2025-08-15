@@ -108,20 +108,11 @@ class SchedulerService:
                 self._job_registry.pop(job_id, None)
     
     def _build_job_configs(self, guild_id: int, settings: Dict, timezone: str) -> List[Dict]:
-        """Build job configuration list for a guild."""
-        # Check if this is Cyprus camp mode
-        camp_mode = settings.get("camp_mode", "standard")
-        
-        # Parse times with validation
+        """Build job configuration list for a guild (single unified mode)."""
+        # Parse times with validation (unified)
         times = {}
-        if camp_mode == "cyprus":
-            # Cyprus mode: only feedback polls at 23:00
-            time_keys = ["feedback_publish_time"]
-            defaults = ["23:00"]
-        else:
-            # Standard mode: all polls
-            time_keys = ["poll_publish_time", "reminder_time", "poll_close_time", "feedback_publish_time"]
-            defaults = ["14:30", "19:00", "09:00", "22:00"]
+        time_keys = ["poll_publish_time", "reminder_time", "poll_close_time", "feedback_publish_time"]
+        defaults = ["14:30", "19:00", "09:00", "22:00"]
         
         for key, default in zip(time_keys, defaults):
             time_str = settings.get(key, default)
@@ -133,92 +124,73 @@ class SchedulerService:
         
         job_configs = []
         
-        if camp_mode == "cyprus":
-            # Cyprus mode: only feedback polls
-            job_configs.append({
-                'func': self._run_cyprus_feedback_publish,
-                'args': [guild_id],
-                'trigger': CronTrigger(
-                    hour=times["feedback_publish_time"][0],
-                    minute=times["feedback_publish_time"][1],
-                    timezone=ZoneInfo(timezone)
-                ),
-                'id': f"cyprus_feedback_{guild_id}",
-                'name': f"Cyprus Feedback - Guild {guild_id}",
-                'replace_existing': True,
-                'coalesce': True,
-                'max_instances': 1,
-                'misfire_grace_time': 300,
-            })
-        else:
-            # Standard mode: all jobs
-            # Poll publish job
-            job_configs.append({
-                'func': self._run_poll_publish,
-                'args': [guild_id],
-                'trigger': CronTrigger(
-                    hour=times["poll_publish_time"][0],
-                    minute=times["poll_publish_time"][1],
-                    timezone=ZoneInfo(timezone)
-                ),
-                'id': f"poll_publish_{guild_id}",
-                'name': f"Poll Publish - Guild {guild_id}",
-                'replace_existing': True,
-                'coalesce': True,
-                'max_instances': 1,
-                'misfire_grace_time': 300,
-            })
-            
-            # Reminder job
-            job_configs.append({
-                'func': self._run_poll_reminder,
-                'args': [guild_id],
-                'trigger': CronTrigger(
-                    hour=times["reminder_time"][0],
-                    minute=times["reminder_time"][1],
-                    timezone=ZoneInfo(timezone)
-                ),
-                'id': f"poll_reminder_{guild_id}",
-                'name': f"Poll Reminder - Guild {guild_id}",
-                'replace_existing': True,
-                'coalesce': True,
-                'max_instances': 1,
-                'misfire_grace_time': 300,
-            })
-            
-            # Poll close job
-            job_configs.append({
-                'func': self._run_poll_close,
-                'args': [guild_id],
-                'trigger': CronTrigger(
-                    hour=times["poll_close_time"][0],
-                    minute=times["poll_close_time"][1],
-                    timezone=ZoneInfo(timezone)
-                ),
-                'id': f"poll_close_{guild_id}",
-                'name': f"Poll Close - Guild {guild_id}",
-                'replace_existing': True,
-                'coalesce': True,
-                'max_instances': 1,
-                'misfire_grace_time': 300,
-            })
-            
-            # Feedback publish job
-            job_configs.append({
-                'func': self._run_feedback_publish,
-                'args': [guild_id],
-                'trigger': CronTrigger(
-                    hour=times["feedback_publish_time"][0],
-                    minute=times["feedback_publish_time"][1],
-                    timezone=ZoneInfo(timezone)
-                ),
-                'id': f"feedback_publish_{guild_id}",
-                'name': f"Feedback Publish - Guild {guild_id}",
-                'replace_existing': True,
-                'coalesce': True,
-                'max_instances': 1,
-                'misfire_grace_time': 300,
-            })
+        # Poll publish job
+        job_configs.append({
+            'func': self._run_poll_publish,
+            'args': [guild_id],
+            'trigger': CronTrigger(
+                hour=times["poll_publish_time"][0],
+                minute=times["poll_publish_time"][1],
+                timezone=ZoneInfo(timezone)
+            ),
+            'id': f"poll_publish_{guild_id}",
+            'name': f"Poll Publish - Guild {guild_id}",
+            'replace_existing': True,
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 300,
+        })
+        
+        # Reminder job
+        job_configs.append({
+            'func': self._run_poll_reminder,
+            'args': [guild_id],
+            'trigger': CronTrigger(
+                hour=times["reminder_time"][0],
+                minute=times["reminder_time"][1],
+                timezone=ZoneInfo(timezone)
+            ),
+            'id': f"poll_reminder_{guild_id}",
+            'name': f"Poll Reminder - Guild {guild_id}",
+            'replace_existing': True,
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 300,
+        })
+        
+        # Poll close job
+        job_configs.append({
+            'func': self._run_poll_close,
+            'args': [guild_id],
+            'trigger': CronTrigger(
+                hour=times["poll_close_time"][0],
+                minute=times["poll_close_time"][1],
+                timezone=ZoneInfo(timezone)
+            ),
+            'id': f"poll_close_{guild_id}",
+            'name': f"Poll Close - Guild {guild_id}",
+            'replace_existing': True,
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 300,
+        })
+        
+        # Feedback publish job
+        job_configs.append({
+            'func': self._run_feedback_publish,
+            'args': [guild_id],
+            'trigger': CronTrigger(
+                hour=times["feedback_publish_time"][0],
+                minute=times["feedback_publish_time"][1],
+                timezone=ZoneInfo(timezone)
+            ),
+            'id': f"feedback_publish_{guild_id}",
+            'name': f"Feedback Publish - Guild {guild_id}",
+            'replace_existing': True,
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 300,
+        })
         
         return job_configs
     
@@ -363,33 +335,7 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"Error in feedback publish task for guild {guild_id}: {e}")
     
-    async def _run_cyprus_feedback_publish(self, guild_id: int):
-        """Execute Cyprus feedback poll publishing task."""
-        try:
-            logger.info(f"Running Cyprus feedback publish task for guild {guild_id}")
-            
-            guild = self.bot.get_guild(guild_id)
-            if not guild:
-                logger.error(f"Guild {guild_id} not found")
-                return
-            
-            settings = await get_guild_settings(guild_id)
-            if not settings:
-                logger.error(f"No settings found for guild {guild_id}")
-                return
-            
-            # Import Cyprus feedback function
-            from services.polls.cyprus_feedback import publish_cyprus_feedback_polls
-            
-            polls = await publish_cyprus_feedback_polls(self.bot, guild, settings)
-            
-            if polls:
-                logger.info(f"Published {len(polls)} Cyprus feedback poll(s) for guild {guild_id}")
-            else:
-                logger.info(f"No events for Cyprus feedback polls in guild {guild_id}")
-            
-        except Exception as e:
-            logger.error(f"Error in Cyprus feedback publish task for guild {guild_id}: {e}")
+    # Cyprus-specific feedback publisher was removed; unified publisher is used across all modes
     
     def get_guild_jobs(self, guild_id: int) -> List[Dict]:
         """Get information about jobs for a specific guild."""

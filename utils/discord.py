@@ -1,3 +1,22 @@
+from __future__ import annotations
+
+from typing import Optional
+import discord
+
+
+async def ensure_can_send(guild: discord.Guild, channel_id: int) -> Optional[discord.TextChannel]:
+    """Return channel if bot can send messages there; otherwise None."""
+    channel = guild.get_channel(channel_id)
+    if not channel:
+        return None
+    try:
+        perms = channel.permissions_for(guild.me)
+        if not getattr(perms, "send_messages", False):
+            return None
+    except Exception:
+        return None
+    return channel
+
 """
 Discord utilities for CampPoll bot.
 Common functions for creating embeds, formatting messages, and Discord-specific operations.

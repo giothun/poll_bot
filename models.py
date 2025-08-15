@@ -25,6 +25,7 @@ class Event:
     event_type: EventType
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     feedback_only: bool = False  # if True, attendance poll is skipped and only feedback is posted
+    guild_id: Optional[int] = None  # scope event to a specific guild when set
     
     def __post_init__(self):
         """Convert string event_type to EventType enum if needed."""
@@ -48,7 +49,8 @@ class Event:
             "date": self.date,
             "event_type": self.event_type.value,
             "created_at": self.created_at.isoformat(),
-            "feedback_only": self.feedback_only
+            "feedback_only": self.feedback_only,
+            "guild_id": self.guild_id,
         }
     
     @classmethod
@@ -60,7 +62,8 @@ class Event:
             date=data["date"],
             event_type=EventType(data["event_type"]),
             created_at=datetime.fromisoformat(data["created_at"]),
-            feedback_only=data.get("feedback_only", False)
+            feedback_only=data.get("feedback_only", False),
+            guild_id=data.get("guild_id"),
         )
 
 @dataclass

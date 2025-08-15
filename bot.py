@@ -11,12 +11,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import os
-from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import commands
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from services.scheduler_service import SchedulerService
 
 from config import get_config
 from models import GuildSettings, PollMeta
@@ -61,8 +59,8 @@ class CampPollBot(commands.Bot):
         # Configuration
         self.config = get_config()
         
-        # Scheduler
-        self.scheduler = AsyncIOScheduler()
+        # Scheduler service (single source of scheduling)
+        self.scheduler_service = SchedulerService(self)
         
         # Track if bot is ready
         self.is_ready = False
@@ -84,8 +82,8 @@ class CampPollBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to load commands: {e}")
         
-        # Setup scheduler
-        await self.setup_scheduler()
+        # Setup scheduler via service
+        await self.scheduler_service.setup_all_guild_jobs()
         
         # Setup error handler for app commands
         self.tree.on_error = self.on_app_command_error
@@ -109,9 +107,7 @@ class CampPollBot(commands.Bot):
         logger.info(f'Connected to {len(self.guilds)} guild(s)')
         
         # Start scheduler
-        if not self.scheduler.running:
-            self.scheduler.start()
-            logger.info("Scheduler started")
+        self.scheduler_service.start()
         
         self.is_ready = True
         
@@ -162,124 +158,7 @@ class CampPollBot(commands.Bot):
         except Exception as e:
             logger.warning(f"Could not send welcome message to {guild.name}: {e}")
     
-    async def setup_scheduler(self):
-        """Setup the task scheduler."""
-        logger.info("Setting up scheduler...")
-        
-        # Load all guild settings and setup jobs
-        guild_settings = await load_guild_settings()
-        
-        for guild_id_str, settings in guild_settings.items():
-            guild_id = int(guild_id_str)
-            await self.setup_guild_jobs(guild_id, settings)
-        
-        logger.info(f"Scheduler setup complete with {len(self.scheduler.get_jobs())} jobs")
-    
-    async def setup_guild_jobs(self, guild_id: int, settings: dict = None):
-        """Setup scheduled jobs for a guild."""
-        try:
-            if not settings:
-                settings = await get_guild_settings(guild_id)
-                if not settings:
-                    # Create default settings
-                    settings = GuildSettings(guild_id=guild_id).to_dict()
-            
-            timezone = settings.get("timezone", "Europe/Helsinki")
-            
-            if not is_valid_timezone(timezone):
-                logger.error(f"Invalid timezone {timezone} for guild {guild_id}")
-                return
-            
-            # Parse times
-            publish_time = settings.get("poll_publish_time", "14:30").split(":")
-            reminder_time = settings.get("reminder_time", "19:00").split(":")
-            close_time = settings.get("poll_close_time", "09:00").split(":")
-            feedback_time = settings.get("feedback_publish_time", "22:00").split(":")
-            
-            # Remove existing jobs for this guild
-            job_ids = [
-                f"poll_publish_{guild_id}",
-                f"poll_reminder_{guild_id}",
-                f"poll_close_{guild_id}",
-                f"feedback_publish_{guild_id}"
-            ]
-            
-            for job_id in job_ids:
-                if self.scheduler.get_job(job_id):
-                    self.scheduler.remove_job(job_id)
-            
-            # Add publish job (daily at publish time)
-            self.scheduler.add_job(
-                func=self.run_poll_publish,
-                args=[guild_id],
-                trigger=CronTrigger(
-                    hour=int(publish_time[0]),
-                    minute=int(publish_time[1]),
-                    timezone=ZoneInfo(timezone)
-                ),
-                id=f"poll_publish_{guild_id}",
-                name=f"Poll Publish - Guild {guild_id}",
-                replace_existing=True,
-                coalesce=True,
-                max_instances=1,
-                misfire_grace_time=300,
-            )
-            
-            # Add reminder job (daily at reminder time)
-            self.scheduler.add_job(
-                func=self.run_poll_reminder,
-                args=[guild_id],
-                trigger=CronTrigger(
-                    hour=int(reminder_time[0]),
-                    minute=int(reminder_time[1]),
-                    timezone=ZoneInfo(timezone)
-                ),
-                id=f"poll_reminder_{guild_id}",
-                name=f"Poll Reminder - Guild {guild_id}",
-                replace_existing=True,
-                coalesce=True,
-                max_instances=1,
-                misfire_grace_time=300,
-            )
-            
-            # Add close job (daily at close time)
-            self.scheduler.add_job(
-                func=self.run_poll_close,
-                args=[guild_id],
-                trigger=CronTrigger(
-                    hour=int(close_time[0]),
-                    minute=int(close_time[1]),
-                    timezone=ZoneInfo(timezone)
-                ),
-                id=f"poll_close_{guild_id}",
-                name=f"Poll Close - Guild {guild_id}",
-                replace_existing=True,
-                coalesce=True,
-                max_instances=1,
-                misfire_grace_time=300,
-            )
-            
-            # Add feedback publish job (daily at feedback time)
-            self.scheduler.add_job(
-                func=self.run_feedback_publish,
-                args=[guild_id],
-                trigger=CronTrigger(
-                    hour=int(feedback_time[0]),
-                    minute=int(feedback_time[1]),
-                    timezone=ZoneInfo(timezone)
-                ),
-                id=f"feedback_publish_{guild_id}",
-                name=f"Feedback Publish - Guild {guild_id}",
-                replace_existing=True,
-                coalesce=True,
-                max_instances=1,
-                misfire_grace_time=300,
-            )
-            
-            logger.info(f"Setup scheduled jobs for guild {guild_id} (timezone: {timezone})")
-            
-        except Exception as e:
-            logger.error(f"Error setting up jobs for guild {guild_id}: {e}")
+    # Scheduling is delegated to SchedulerService
     
     async def run_poll_publish(self, guild_id: int):
         """Run the poll publishing task."""
@@ -366,7 +245,7 @@ class CampPollBot(commands.Bot):
                 logger.error(f"No settings found for guild {guild_id}")
                 return
             
-            # Publish feedback polls
+            # Publish feedback polls using unified options in all modes
             polls = await publish_feedback_polls(self, guild, settings)
             
             if polls:
@@ -418,55 +297,9 @@ class CampPollBot(commands.Bot):
         """Cleanup when bot shuts down."""
         logger.info("Shutting down bot...")
         
-        if self.scheduler.running:
-            self.scheduler.shutdown()
-            logger.info("Scheduler stopped")
+        self.scheduler_service.shutdown()
         
         await super().close()
-
-    async def on_poll_vote_add(self, user: discord.User, answer: discord.PollAnswer):
-        """Called when a user votes in a poll."""
-        try:
-            poll = answer.poll
-            if not poll:
-                return
-            
-            # Get poll metadata
-            poll_data = await get_poll(str(poll.message.id))
-            if not poll_data:
-                return
-            
-            poll_meta = PollMeta.from_dict(poll_data)
-            
-            # Add vote by answer_id via domain method
-            if poll_meta.record_vote_by_answer_id(user.id, str(answer.id)):
-                await save_poll(poll_meta.to_dict())
-                logger.info(f"User {user.id} voted for '{answer.text}' in poll {poll.message.id}")
-            
-        except Exception as e:
-            logger.error(f"Error handling poll vote: {e}")
-    
-    async def on_poll_vote_remove(self, user: discord.User, answer: discord.PollAnswer):
-        """Called when a user removes their vote from a poll."""
-        try:
-            poll = answer.poll
-            if not poll:
-                return
-            
-            # Get poll metadata
-            poll_data = await get_poll(str(poll.message.id))
-            if not poll_data:
-                return
-            
-            poll_meta = PollMeta.from_dict(poll_data)
-            
-            # Remove vote by answer_id via domain method
-            if poll_meta.remove_vote_by_answer_id(user.id, str(answer.id)):
-                await save_poll(poll_meta.to_dict())
-                logger.info(f"User {user.id} removed vote for '{answer.text}' in poll {poll.message.id}")
-            
-        except Exception as e:
-            logger.error(f"Error handling poll vote removal: {e}")
 
     async def on_raw_poll_vote_add(self, payload: discord.RawPollVoteActionEvent):
         """Called when a poll vote is added (works even if message is not cached)."""

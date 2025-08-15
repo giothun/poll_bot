@@ -11,6 +11,7 @@ import discord  # type: ignore
 from models import Event, EventType, PollMeta, PollOption
 from storage import get_events_by_date, save_poll, get_polls_by_guild
 from utils.time import tz_today
+from utils.discord import ensure_can_send
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,15 @@ FEEDBACK_OPTIONS: Dict[EventType, List[str]] = {
     EventType.CONTEST: [
         "🩷 Wow, I loved it!",
         "😿 It was too hard",
-        "🙅‍♂️ I didn't participate",
+        "🥱 It was too easy",
+        "😑 It was OK",
+        "😕 I didn’t like it",
+    ],
+    EventType.CONTEST_EDITORIAL: [
+        "😻 It was super useful!",
+        "🆗 It was OK",
+        "😑 It could be better",
+        "🏃‍♀️‍➡️ I didn’t attend the analysis",
     ],
     EventType.EXTRA_LECTURE: [
         "🤩 Cool – It was informative and useful",
@@ -42,6 +51,18 @@ FEEDBACK_OPTIONS: Dict[EventType, List[str]] = {
 }
 
 
+def get_event_type_display_name(event_type: EventType) -> str:
+    """Return human-readable event type name for feedback poll titles."""
+    display_names: Dict[EventType, str] = {
+        EventType.CONTEST: "Contest",
+        EventType.CONTEST_EDITORIAL: "Contest Analysis",
+        EventType.EXTRA_LECTURE: "Extra Lecture",
+        EventType.EVENING_ACTIVITY: "Evening Activity",
+        EventType.LECTURE: "Lecture",
+    }
+    return display_names.get(event_type, event_type.value.title())
+
+
 async def publish_feedback_polls(
     bot: discord.Client, guild: discord.Guild, guild_settings: Dict[str, Any]
 ) -> List[PollMeta]:
@@ -51,10 +72,14 @@ async def publish_feedback_polls(
         timezone = guild_settings.get("timezone", "Europe/Helsinki")
         today_date = tz_today(timezone)
 
-        events_data = await get_events_by_date(today_date)
+        events_data = await get_events_by_date(today_date, guild_id=guild.id)
         events = [Event.from_dict(event) for event in events_data]
 
-        pollable_events = [e for e in events if e.is_pollable and not e.feedback_only]
+        # Include standard pollable events (lecture/contest) and contest editorials (feedback-only)
+        pollable_events = [
+            e for e in events
+            if (e.is_pollable and not e.feedback_only) or e.event_type == EventType.CONTEST_EDITORIAL
+        ]
         if not pollable_events:
             logger.info(
                 f"No pollable events for feedback polls on {today_date} in guild {guild.id}"
@@ -86,9 +111,10 @@ async def publish_feedback_polls(
                     f"Feedback poll for event {event.id} already exists; skipping"
                 )
                 continue
+            readable_type = get_event_type_display_name(event.event_type)
             event_option = PollOption(
                 event_id=event.id,
-                title=f"{event.event_type.value.title()}: {event.title}",
+                title=f"{readable_type}: {event.title}",
                 event_type=event.event_type,
             )
             feedback_poll = await create_feedback_poll(guild, event_option, guild_settings, today_date)
@@ -113,15 +139,9 @@ async def create_feedback_poll(
 ) -> Optional[PollMeta]:
     try:
         poll_channel_id = guild_settings.get("poll_channel_id")
-        poll_channel = guild.get_channel(poll_channel_id) if poll_channel_id else None
+        poll_channel = await ensure_can_send(guild, poll_channel_id) if poll_channel_id else None
         if not poll_channel:
-            logger.warning(f"Poll channel {poll_channel_id} not found in guild {guild.id}")
-            return None
-
-        # Check bot permissions
-        bot_permissions = poll_channel.permissions_for(guild.me)
-        if not bot_permissions.send_messages:
-            logger.error(f"No permission to send messages in feedback channel {poll_channel_id}")
+            logger.warning(f"Cannot send messages in feedback channel {poll_channel_id} (missing or no perms)")
             return None
 
         feedback_texts = FEEDBACK_OPTIONS.get(event_option.event_type)

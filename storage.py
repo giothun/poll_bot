@@ -142,19 +142,22 @@ async def delete_event(event_id: str) -> bool:
         return await save_events(events)
     return False
 
-async def get_events_by_date(date: str) -> List[Dict]:
-    """Get all events for a specific date."""
+async def get_events_by_date(date: str, guild_id: Optional[int] = None) -> List[Dict]:
+    """Get all events for a specific date, optionally filtered by guild_id."""
     events = await load_events()
-    return [event for event in events if event.get("date") == date]
+    filtered = [event for event in events if event.get("date") == date]
+    if guild_id is not None:
+        filtered = [event for event in filtered if event.get("guild_id") == guild_id]
+    return filtered
 
-async def get_events_by_type(event_type: str, date: Optional[str] = None) -> List[Dict]:
-    """Get events by type, optionally filtered by date."""
+async def get_events_by_type(event_type: str, date: Optional[str] = None, guild_id: Optional[int] = None) -> List[Dict]:
+    """Get events by type, optionally filtered by date and guild_id."""
     events = await load_events()
     filtered = [event for event in events if event.get("event_type") == event_type]
-    
     if date:
         filtered = [event for event in filtered if event.get("date") == date]
-    
+    if guild_id is not None:
+        filtered = [event for event in filtered if event.get("guild_id") == guild_id]
     return filtered
 
 # Poll storage functions
