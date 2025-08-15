@@ -601,25 +601,40 @@ class AdminCommands(commands.Cog):
             except discord.HTTPException as e:
                 logger.warning(f"Failed to send error response: {e}")
     
-    @app_commands.command(name="setpolltimes", description="Set poll timing (publish;close;reminder)")
-    @app_commands.describe(times="Format: HH:MM;HH:MM;HH:MM (publish;close;reminder)")
+    @app_commands.command(name="setpolltimes", description="Set poll timing (publish;close;reminder;feedback)")
+    @app_commands.describe(times="Format: HH:MM;HH:MM;HH:MM;HH:MM (publish;close;reminder;feedback) OR HH:MM;HH:MM;HH:MM (publish;close;reminder)")
     async def set_poll_times(self, interaction: discord.Interaction, times: str):
         """Set poll timing schedule."""
         try:
             await interaction.response.defer(ephemeral=True)
             
-            # Validate poll times format
-            validation_result = validate_poll_times_format(times)
-            if not validation_result:
-                error_msg = format_message(MessageType.ERROR, 'invalid_format', 
-                                         expected_format="HH:MM;HH:MM;HH:MM (publish;close;reminder)")
-                await interaction.followup.send(f"{error_msg}\n{validation_result.error_message}", ephemeral=True)
+            # Parse times - support both 3 and 4 time format
+            time_parts = times.split(";")
+            if len(time_parts) not in [3, 4]:
+                await interaction.followup.send(
+                    "❌ Invalid format. Use either:\n"
+                    "• `HH:MM;HH:MM;HH:MM` (publish;close;reminder)\n"
+                    "• `HH:MM;HH:MM;HH:MM;HH:MM` (publish;close;reminder;feedback)",
+                    ephemeral=True
+                )
                 return
             
-            publish_time_tuple, close_time_tuple, reminder_time_tuple = validation_result.cleaned_value
-            publish_time = f"{publish_time_tuple[0]:02d}:{publish_time_tuple[1]:02d}"
-            close_time = f"{close_time_tuple[0]:02d}:{close_time_tuple[1]:02d}"
-            reminder_time = f"{reminder_time_tuple[0]:02d}:{reminder_time_tuple[1]:02d}"
+            # Validate and parse each time
+            from utils.time import parse_time
+            parsed_times = []
+            for i, time_str in enumerate(time_parts):
+                time_str = time_str.strip()
+                parsed = parse_time(time_str)
+                if not parsed:
+                    await interaction.followup.send(
+                        f"❌ Invalid time format: `{time_str}` at position {i+1}. Use HH:MM format.",
+                        ephemeral=True
+                    )
+                    return
+                parsed_times.append(f"{parsed[0]:02d}:{parsed[1]:02d}")
+            
+            publish_time, close_time, reminder_time = parsed_times[:3]
+            feedback_time = parsed_times[3] if len(parsed_times) == 4 else None
             
             # Get or create guild settings
             guild_settings = await get_guild_settings(interaction.guild_id)
@@ -629,17 +644,25 @@ class AdminCommands(commands.Cog):
             guild_settings["poll_publish_time"] = publish_time.strip()
             guild_settings["poll_close_time"] = close_time.strip()
             guild_settings["reminder_time"] = reminder_time.strip()
+            if feedback_time:
+                guild_settings["feedback_publish_time"] = feedback_time.strip()
             
             # Save settings
             await save_guild_setting(guild_settings)
             
-            embed = (EmbedBuilder("Poll Times Updated")
-                    .add_field("📢 Publish Time", publish_time, inline=True)
-                    .add_field("⏰ Reminder Time", reminder_time, inline=True)
-                    .add_field("🔒 Close Time", close_time, inline=True)
-                    .build())
+            embed = EmbedBuilder("Poll Times Updated")
+            embed.add_field("📢 Attendance Publish", publish_time, inline=True)
+            embed.add_field("⏰ Reminder Time", reminder_time, inline=True)
+            embed.add_field("🔒 Close Time", close_time, inline=True)
+            if feedback_time:
+                embed.add_field("📝 Feedback Publish", feedback_time, inline=True)
+            else:
+                current_feedback = guild_settings.get("feedback_publish_time", "22:00")
+                embed.add_field("📝 Feedback Publish", f"{current_feedback} (unchanged)", inline=True)
             
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            embed_built = embed.build()
+            
+            await interaction.followup.send(embed=embed_built, ephemeral=True)
             
             logger.info(f"Poll times updated for guild {interaction.guild_id}: {times}")
             
@@ -701,6 +724,22 @@ class AdminCommands(commands.Cog):
     async def add_contest_editorial(self, interaction: discord.Interaction, date_title: str):
         """Add a contest editorial event."""
         await self._add_event_from_string(interaction, date_title, EventType.CONTEST_EDITORIAL, feedback_only=True)
+    
+    @app_commands.command(name="addcypruscontest", description="Add a Cyprus contest (feedback only, no reminders)")
+    @app_commands.describe(
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
+    )
+    async def add_cyprus_contest(self, interaction: discord.Interaction, date_title: str):
+        """Add a Cyprus contest event (feedback only)."""
+        await self._add_event_from_string(interaction, date_title, EventType.CYPRUS_CONTEST, feedback_only=True)
+    
+    @app_commands.command(name="addcypruseditorial", description="Add a Cyprus editorial (feedback only, no reminders)")
+    @app_commands.describe(
+        date_title="Format: DATE;Title (DATE: 2025-06-12, 06-12, or 12 for next occurrence)"
+    )
+    async def add_cyprus_editorial(self, interaction: discord.Interaction, date_title: str):
+        """Add a Cyprus editorial event (feedback only)."""
+        await self._add_event_from_string(interaction, date_title, EventType.CYPRUS_EDITORIAL, feedback_only=True)
     
     async def _add_event_from_string(
         self,

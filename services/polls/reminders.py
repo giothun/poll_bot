@@ -27,7 +27,7 @@ async def send_reminders(
         active_polls: List[PollMeta] = [
             PollMeta.from_dict(poll)
             for poll in all_polls.values()
-            if poll["guild_id"] == guild.id and poll["closed_at"] is None
+            if poll["guild_id"] == guild.id and poll["closed_at"] is None and not poll.get("is_feedback", False)
         ]
 
         # Optionally narrow to specific polls (e.g., newly created by a test command)

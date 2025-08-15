@@ -28,13 +28,13 @@ FEEDBACK_OPTIONS: Dict[EventType, List[str]] = {
         "😿 It was too hard",
         "🥱 It was too easy",
         "😑 It was OK",
-        "😕 I didn’t like it",
+        "😕 I didn't like it",
     ],
     EventType.CONTEST_EDITORIAL: [
         "😻 It was super useful!",
         "🆗 It was OK",
         "😑 It could be better",
-        "🏃‍♀️‍➡️ I didn’t attend the analysis",
+        "🏃‍♀️‍➡️ I didn't attend the analysis",
     ],
     EventType.EXTRA_LECTURE: [
         "🤩 Cool – It was informative and useful",
@@ -48,6 +48,19 @@ FEEDBACK_OPTIONS: Dict[EventType, List[str]] = {
         "😕 Meh – I could do something better",
         "🙈 I didn't participate",
     ],
+    EventType.CYPRUS_CONTEST: [
+        "🩷 Wow, I loved it!",
+        "😿 It was too hard",
+        "🥱 It was too easy",
+        "😑 It was OK",
+        "😕 I didn't like it",
+    ],
+    EventType.CYPRUS_EDITORIAL: [
+        "😻 It was super useful!",
+        "🆗 It was OK",
+        "😑 It could be better",
+        "🏃‍♀️‍➡️ I didn't attend the analysis",
+    ],
 }
 
 
@@ -59,6 +72,8 @@ def get_event_type_display_name(event_type: EventType) -> str:
         EventType.EXTRA_LECTURE: "Extra Lecture",
         EventType.EVENING_ACTIVITY: "Evening Activity",
         EventType.LECTURE: "Lecture",
+        EventType.CYPRUS_CONTEST: "🇨🇾 Cyprus Contest",
+        EventType.CYPRUS_EDITORIAL: "🇨🇾 Cyprus Editorial",
     }
     return display_names.get(event_type, event_type.value.title())
 
@@ -75,10 +90,12 @@ async def publish_feedback_polls(
         events_data = await get_events_by_date(today_date, guild_id=guild.id)
         events = [Event.from_dict(event) for event in events_data]
 
-        # Include standard pollable events (lecture/contest) and contest editorials (feedback-only)
+        # Include standard pollable events (lecture/contest), contest editorials, and Cyprus events (all feedback-only)
         pollable_events = [
             e for e in events
-            if (e.is_pollable and not e.feedback_only) or e.event_type == EventType.CONTEST_EDITORIAL
+            if (e.is_pollable and not e.feedback_only) or e.event_type in [
+                EventType.CONTEST_EDITORIAL, EventType.CYPRUS_CONTEST, EventType.CYPRUS_EDITORIAL
+            ]
         ]
         if not pollable_events:
             logger.info(

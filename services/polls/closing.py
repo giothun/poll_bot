@@ -118,10 +118,11 @@ async def close_all_active_polls(
         for poll_meta in active_polls:
             should_close = False
             if poll_meta.is_feedback:
-                # Feedback опросы закрываются на следующий день после их даты
-                # Используем логику: если опрос создан сегодня, закрыть завтра (23:00 -> 00:01)
+                # Feedback опросы закрываются через 24 часа после публикации
+                # Используем feedback_publish_time из настроек
+                feedback_publish_time = guild_settings.get("feedback_publish_time", "22:00")
                 expected_close_date = get_poll_closing_date(
-                    poll_meta.poll_date, "23:00", "00:01", timezone
+                    poll_meta.poll_date, feedback_publish_time, feedback_publish_time, timezone
                 )
                 if expected_close_date == today_date:
                     should_close = True

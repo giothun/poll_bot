@@ -15,6 +15,8 @@ class EventType(Enum):
     CONTEST_EDITORIAL = "contest_editorial"  # Contest editorial sessions
     EXTRA_LECTURE = "extra"  # Stored but not polled
     EVENING_ACTIVITY = "evening"  # Stored but not polled
+    CYPRUS_CONTEST = "cyprus_contest"  # Cyprus contest - feedback only, no reminders
+    CYPRUS_EDITORIAL = "cyprus_editorial"  # Cyprus editorial - feedback only, no reminders
 
 @dataclass
 class Event:
